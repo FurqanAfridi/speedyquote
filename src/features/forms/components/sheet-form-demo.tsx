@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useAppForm, useFormFields } from '@/components/ui/tanstack-form';
+import { useAppForm } from '@/lib/form';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { FieldGroup } from '@/components/ui/field';
 import {
   Sheet,
   SheetContent,
@@ -25,24 +26,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Icons } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
-// Types
+// Schemas
 // ---------------------------------------------------------------------------
 
-type SheetFormValues = {
-  name: string;
-  category: string;
-  price: number | undefined;
-  description: string;
-};
+const sheetFormSchema = z.object({
+  name: z.string().min(2, 'Product name must be at least 2 characters'),
+  category: z.string().min(1, 'Please select a category'),
+  price: z.number({ error: 'Price is required' }).min(0.01, 'Price must be greater than 0'),
+  description: z.string().min(10, 'Description must be at least 10 characters')
+});
 
-type DialogFormValues = {
-  rating: number;
-  feedback: string;
-};
-
-// ---------------------------------------------------------------------------
-// Options
-// ---------------------------------------------------------------------------
+const dialogFormSchema = z.object({
+  rating: z.number().min(0).max(10),
+  feedback: z.string().min(5, 'Feedback must be at least 5 characters')
+});
 
 const categoryOptions = [
   { value: 'beauty', label: 'Beauty Products' },
@@ -62,9 +59,12 @@ function SheetFormSection() {
     defaultValues: {
       name: '',
       category: '',
-      price: undefined,
+      price: undefined as number | undefined,
       description: ''
-    } as SheetFormValues,
+    },
+    validators: {
+      onSubmit: sheetFormSchema
+    },
     onSubmit: ({ value }) => {
       toast.success('Product created successfully!', {
         description: `${value.name} has been added.`
@@ -73,8 +73,6 @@ function SheetFormSection() {
       form.reset();
     }
   });
-
-  const { FormTextField, FormSelectField, FormTextareaField } = useFormFields<SheetFormValues>();
 
   return (
     <Card>
@@ -100,57 +98,66 @@ function SheetFormSection() {
               </SheetDescription>
             </SheetHeader>
 
-            <div className='flex-1 overflow-auto'>
-              <form.AppForm>
-                <form.Form id='sheet-form-id' className='space-y-4 p-0 md:p-0'>
-                  <FormTextField
-                    name='name'
-                    label='Product Name'
-                    required
-                    placeholder='Enter product name'
-                    validators={{
-                      onBlur: z.string().min(2, 'Product name must be at least 2 characters')
-                    }}
-                  />
+            <form
+              id='sheet-form-id'
+              className='space-y-4 p-4 md:p-4'
+              onSubmit={(e) => {
+                e.preventDefault();
+                form.handleSubmit();
+              }}
+            >
+              <FieldGroup>
+                <form.AppField
+                  name='name'
+                  children={(field) => (
+                    <field.TextField
+                      label='Product Name'
+                      required
+                      placeholder='Enter product name'
+                    />
+                  )}
+                />
 
-                  <FormSelectField
-                    name='category'
-                    label='Category'
-                    required
-                    options={categoryOptions}
-                    placeholder='Select a category'
-                    validators={{
-                      onBlur: z.string().min(1, 'Please select a category')
-                    }}
-                  />
+                <form.AppField
+                  name='category'
+                  children={(field) => (
+                    <field.SelectField
+                      label='Category'
+                      required
+                      options={categoryOptions}
+                      placeholder='Select a category'
+                    />
+                  )}
+                />
 
-                  <FormTextField
-                    name='price'
-                    label='Price'
-                    required
-                    type='number'
-                    min={0}
-                    step='0.01'
-                    placeholder='0.00'
-                    validators={{
-                      onBlur: z.number().min(0.01, 'Price must be greater than 0')
-                    }}
-                  />
+                <form.AppField
+                  name='price'
+                  children={(field) => (
+                    <field.TextField
+                      label='Price'
+                      required
+                      type='number'
+                      min={0}
+                      step='0.01'
+                      placeholder='0.00'
+                    />
+                  )}
+                />
 
-                  <FormTextareaField
-                    name='description'
-                    label='Description'
-                    required
-                    placeholder='Enter product description'
-                    maxLength={500}
-                    rows={4}
-                    validators={{
-                      onBlur: z.string().min(10, 'Description must be at least 10 characters')
-                    }}
-                  />
-                </form.Form>
-              </form.AppForm>
-            </div>
+                <form.AppField
+                  name='description'
+                  children={(field) => (
+                    <field.TextareaField
+                      label='Description'
+                      required
+                      placeholder='Enter product description'
+                      maxLength={500}
+                      rows={4}
+                    />
+                  )}
+                />
+              </FieldGroup>
+            </form>
 
             <SheetFooter className='pt-4'>
               <Button type='button' variant='outline' onClick={() => setOpen(false)}>
@@ -178,7 +185,10 @@ function DialogFormSection() {
     defaultValues: {
       rating: 5,
       feedback: ''
-    } as DialogFormValues,
+    },
+    validators: {
+      onSubmit: dialogFormSchema
+    },
     onSubmit: ({ value }) => {
       toast.success('Feedback submitted!', {
         description: `Rating: ${value.rating}/10. Thank you!`
@@ -188,16 +198,12 @@ function DialogFormSection() {
     }
   });
 
-  const { FormSliderField, FormTextareaField } = useFormFields<DialogFormValues>();
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Dialog Form</CardTitle>
         <CardDescription>
-          A quick feedback form inside a Dialog. Uses composed field components from{' '}
-          <code className='bg-muted rounded px-1 text-sm'>useFormFields</code> with the submit
-          button in the DialogFooter.
+          A quick feedback form inside a Dialog with the submit button in the DialogFooter.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -212,30 +218,42 @@ function DialogFormSection() {
               <DialogDescription>Rate your experience and leave a comment.</DialogDescription>
             </DialogHeader>
 
-            <form.AppForm>
-              <form.Form id='dialog-form-id' className='space-y-4 py-2'>
-                <FormSliderField
+            <form
+              id='dialog-form-id'
+              className='space-y-4 py-2'
+              onSubmit={(e) => {
+                e.preventDefault();
+                form.handleSubmit();
+              }}
+            >
+              <FieldGroup>
+                <form.AppField
                   name='rating'
-                  label='Rating'
-                  description='Rate your experience (0-10)'
-                  min={0}
-                  max={10}
-                  step={1}
+                  children={(field) => (
+                    <field.SliderField
+                      label='Rating'
+                      description='Rate your experience (0-10)'
+                      min={0}
+                      max={10}
+                      step={1}
+                    />
+                  )}
                 />
 
-                <FormTextareaField
+                <form.AppField
                   name='feedback'
-                  label='Feedback'
-                  required
-                  placeholder='Tell us what you think...'
-                  maxLength={300}
-                  rows={3}
-                  validators={{
-                    onBlur: z.string().min(5, 'Feedback must be at least 5 characters')
-                  }}
+                  children={(field) => (
+                    <field.TextareaField
+                      label='Feedback'
+                      required
+                      placeholder='Tell us what you think...'
+                      maxLength={300}
+                      rows={3}
+                    />
+                  )}
                 />
-              </form.Form>
-            </form.AppForm>
+              </FieldGroup>
+            </form>
 
             <DialogFooter>
               <Button type='button' variant='outline' onClick={() => setOpen(false)}>

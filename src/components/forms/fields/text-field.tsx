@@ -1,75 +1,54 @@
-import { useStore } from '@tanstack/react-form';
+import * as React from 'react';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { FieldDescription, FieldLabel } from '@/components/ui/field';
-import {
-  useFieldContext,
-  FormFieldSet,
-  FormField,
-  FormFieldError,
-  createFormField
-} from '@/components/ui/form-context';
 import { Spinner } from '@/components/ui/spinner';
+import { useFieldContext, useFieldInvalid, type BaseFieldProps } from '@/lib/form-context';
 
-interface TextFieldProps extends Omit<
-  React.ComponentProps<'input'>,
-  'value' | 'onChange' | 'onBlur'
-> {
-  label: string;
-  description?: string;
-  required?: boolean;
-  type?: 'text' | 'email' | 'password' | 'tel' | 'url' | 'number';
-}
-
+/**
+ * Text-style input (text, email, password, tel, url, time, number).
+ * For `type='number'` the value converts at the edge: clearing writes
+ * `undefined` so a required `z.number({ error: '…' })` reports a human
+ * message instead of a type error.
+ */
 export function TextField({
   label,
   description,
   required,
-  type = 'text',
-  className,
   ...inputProps
-}: TextFieldProps) {
-  const field = useFieldContext();
-  const isTouched = useStore(field.store, (s) => s.meta.isTouched);
-  const isValid = useStore(field.store, (s) => s.meta.isValid);
-  const isValidating = useStore(field.store, (s) => s.meta.isValidating);
-  const value = useStore(field.store, (s) => s.value) as string | number;
+}: BaseFieldProps & Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange' | 'onBlur'>) {
+  const field = useFieldContext<string | number | undefined>();
+  const isInvalid = useFieldInvalid();
+  const isValidating = field.state.meta.isValidating;
 
   return (
-    <FormFieldSet>
-      <FormField>
-        <FieldLabel htmlFor={field.name}>
-          {label}
-          {required && ' *'}
-        </FieldLabel>
-        <div className='relative'>
-          <Input
-            id={field.name}
-            type={type}
-            value={value ?? ''}
-            onBlur={field.handleBlur}
-            onChange={(e) => {
-              if (type === 'number') {
-                const v = e.target.value;
-                field.handleChange(v === '' ? '' : parseFloat(v));
-              } else {
-                field.handleChange(e.target.value);
-              }
-            }}
-            aria-invalid={isTouched && !isValid}
-            className={className}
-            {...inputProps}
-          />
-          {isValidating && (
-            <div className='absolute top-1/2 right-3 -translate-y-1/2'>
-              <Spinner className='h-4 w-4' />
-            </div>
-          )}
-        </div>
-        {description && <FieldDescription>{description}</FieldDescription>}
-      </FormField>
-      <FormFieldError />
-    </FormFieldSet>
+    <Field data-invalid={isInvalid}>
+      <FieldLabel htmlFor={field.name}>
+        {label}
+        {required && ' *'}
+      </FieldLabel>
+      <div className='relative'>
+        <Input
+          id={field.name}
+          name={field.name}
+          value={field.state.value ?? ''}
+          onBlur={field.handleBlur}
+          onChange={(e) =>
+            field.handleChange(
+              inputProps.type === 'number'
+                ? e.target.value === ''
+                  ? undefined
+                  : Number(e.target.value)
+                : e.target.value
+            )
+          }
+          aria-invalid={isInvalid}
+          aria-describedby={isInvalid ? `${field.name}-error` : undefined}
+          {...inputProps}
+        />
+        {isValidating && <Spinner className='absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2' />}
+      </div>
+      {description && <FieldDescription>{description}</FieldDescription>}
+      {isInvalid && <FieldError id={`${field.name}-error`} errors={field.state.meta.errors} />}
+    </Field>
   );
 }
-
-export const FormTextField = createFormField(TextField);

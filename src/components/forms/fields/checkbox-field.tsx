@@ -1,44 +1,36 @@
-import { useStore } from '@tanstack/react-form';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FieldDescription, FieldLabel } from '@/components/ui/field';
 import {
-  useFieldContext,
-  FormFieldSet,
-  FormField,
-  FormFieldError,
-  createFormField
-} from '@/components/ui/form-context';
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel
+} from '@/components/ui/field';
+import { useFieldContext, useFieldInvalid, type BaseFieldProps } from '@/lib/form-context';
 
-interface CheckboxFieldProps {
-  label: string;
-  description?: string;
-}
-
-export function CheckboxField({ label, description }: CheckboxFieldProps) {
-  const field = useFieldContext();
-  const isTouched = useStore(field.store, (s) => s.meta.isTouched);
-  const isValid = useStore(field.store, (s) => s.meta.isValid);
-  const value = useStore(field.store, (s) => s.value) as boolean;
+/** Single boolean checkbox (terms, consent, …). */
+export function CheckboxField({ label, description, required }: BaseFieldProps) {
+  const field = useFieldContext<boolean>();
+  const isInvalid = useFieldInvalid();
 
   return (
-    <FormFieldSet>
-      <FormField orientation='horizontal'>
-        <Checkbox
-          checked={value}
-          onCheckedChange={(checked) => {
-            field.handleChange(checked as boolean);
-            field.handleBlur();
-          }}
-          aria-invalid={isTouched && !isValid}
-        />
-        <div className='flex flex-1 flex-col gap-1.5 leading-snug'>
-          <FieldLabel className='leading-none'>{label}</FieldLabel>
-          {description && <FieldDescription>{description}</FieldDescription>}
-          <FormFieldError />
-        </div>
-      </FormField>
-    </FormFieldSet>
+    <Field orientation='horizontal' data-invalid={isInvalid}>
+      <Checkbox
+        id={field.name}
+        name={field.name}
+        checked={field.state.value}
+        onCheckedChange={(checked) => field.handleChange(checked === true)}
+        aria-invalid={isInvalid}
+        aria-describedby={isInvalid ? `${field.name}-error` : undefined}
+      />
+      <FieldContent>
+        <FieldLabel htmlFor={field.name} className='font-normal'>
+          {label}
+          {required && ' *'}
+        </FieldLabel>
+        {description && <FieldDescription>{description}</FieldDescription>}
+        {isInvalid && <FieldError id={`${field.name}-error`} errors={field.state.meta.errors} />}
+      </FieldContent>
+    </Field>
   );
 }
-
-export const FormCheckboxField = createFormField(CheckboxField);

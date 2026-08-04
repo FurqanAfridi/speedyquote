@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useAppForm } from '@/components/ui/tanstack-form';
+import { FieldGroup } from '@/components/ui/field';
+import { useAppForm } from '@/lib/form';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import * as z from 'zod';
@@ -15,7 +15,7 @@ export default function UserAuthForm() {
 
   const form = useAppForm({
     defaultValues: {
-      email: 'demo@gmail.com'
+      email: ''
     },
     validators: {
       onSubmit: formSchema
@@ -29,34 +29,30 @@ export default function UserAuthForm() {
 
   return (
     <>
-      <form.AppForm>
-        <form.Form className='w-full space-y-2'>
+      <form
+        className='w-full space-y-2'
+        onSubmit={(e) => {
+          e.preventDefault();
+          form.handleSubmit();
+        }}
+      >
+        <FieldGroup>
           <form.AppField
             name='email'
             children={(field) => (
-              <field.FieldSet>
-                <field.Field>
-                  <field.FieldLabel htmlFor={field.name}>Email</field.FieldLabel>
-                  <Input
-                    id={field.name}
-                    name={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder='Enter your email...'
-                    disabled={loading}
-                    aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-                  />
-                </field.Field>
-                <field.FieldError />
-              </field.FieldSet>
+              <field.TextField
+                label='Email'
+                type='email'
+                placeholder='Enter your email...'
+                disabled={loading}
+              />
             )}
           />
-          <Button disabled={loading} className='mt-2 ml-auto w-full' type='submit'>
-            Continue With Email
-          </Button>
-        </form.Form>
-      </form.AppForm>
+        </FieldGroup>
+        <Button disabled={loading} className='mt-2 ml-auto w-full' type='submit'>
+          Continue With Email
+        </Button>
+      </form>
       <div className='relative'>
         <div className='absolute inset-0 flex items-center'>
           <span className='w-full border-t' />

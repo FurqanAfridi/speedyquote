@@ -43,7 +43,8 @@
     "jsx-a11y/role-has-required-aria-props": "warn",
     "jsx-a11y/role-supports-aria-props": "warn",
     "jsx-a11y/prefer-tag-over-role": "off",
-    "jsx-a11y/anchor-is-valid": "off"
+    "jsx-a11y/anchor-is-valid": "off",
+    "jsx-a11y/no-autofocus": ["error", { "ignoreNonDOM": true }]
   },
   "overrides": [
     {

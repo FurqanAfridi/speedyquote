@@ -1,72 +1,57 @@
-import { useStore } from '@tanstack/react-form';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { FieldDescription, FieldLabel } from '@/components/ui/field';
-import {
-  useFieldContext,
-  FormFieldSet,
-  FormField,
-  FormFieldError,
-  createFormField
-} from '@/components/ui/form-context';
-
-type Option = { value: string; label: string };
-
-interface SelectFieldProps {
-  label: string;
-  description?: string;
-  required?: boolean;
-  options: Option[];
-  placeholder?: string;
-}
+import { useFieldContext, useFieldInvalid, type BaseFieldProps } from '@/lib/form-context';
 
 export function SelectField({
   label,
   description,
   required,
-  options,
-  placeholder = 'Select an option'
-}: SelectFieldProps) {
-  const field = useFieldContext();
-  const isTouched = useStore(field.store, (s) => s.meta.isTouched);
-  const isValid = useStore(field.store, (s) => s.meta.isValid);
-  const value = useStore(field.store, (s) => s.value) as string;
+  placeholder = 'Select',
+  options
+}: BaseFieldProps & {
+  placeholder?: string;
+  options: { value: string; label: string; disabled?: boolean }[];
+}) {
+  const field = useFieldContext<string>();
+  const isInvalid = useFieldInvalid();
 
   return (
-    <FormFieldSet>
-      <FormField>
-        <FieldLabel htmlFor={field.name}>
-          {label}
-          {required && ' *'}
-        </FieldLabel>
-        <Select
-          value={value}
-          onValueChange={field.handleChange}
-          onOpenChange={(open) => {
-            if (!open) field.handleBlur();
-          }}
+    <Field data-invalid={isInvalid}>
+      <FieldLabel htmlFor={field.name}>
+        {label}
+        {required && ' *'}
+      </FieldLabel>
+      <Select
+        name={field.name}
+        value={field.state.value}
+        onValueChange={(value) => field.handleChange(value ?? '')}
+      >
+        <SelectTrigger
+          id={field.name}
+          aria-invalid={isInvalid}
+          aria-describedby={isInvalid ? `${field.name}-error` : undefined}
         >
-          <SelectTrigger id={field.name} aria-invalid={isTouched && !isValid}>
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
             {options.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
+              <SelectItem key={opt.value} value={opt.value} disabled={opt.disabled}>
                 {opt.label}
               </SelectItem>
             ))}
-          </SelectContent>
-        </Select>
-        {description && <FieldDescription>{description}</FieldDescription>}
-      </FormField>
-      <FormFieldError />
-    </FormFieldSet>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {description && <FieldDescription>{description}</FieldDescription>}
+      {isInvalid && <FieldError id={`${field.name}-error`} errors={field.state.meta.errors} />}
+    </Field>
   );
 }
-
-export const FormSelectField = createFormField(SelectField);
