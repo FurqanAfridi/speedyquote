@@ -1,15 +1,15 @@
-import { useKBar } from 'kbar';
+import { useCommandMenu } from '@/components/command-menu';
 import { Icons } from '@/components/icons';
 import { Button } from './ui/button';
 
 export default function SearchInput() {
-  const { query } = useKBar();
+  const { toggle } = useCommandMenu();
   return (
     <div className='w-full space-y-2'>
       <Button
         variant='outline'
         className='bg-background text-muted-foreground relative h-9 w-full justify-start rounded-[0.5rem] text-sm font-normal shadow-none sm:pr-12 md:w-40 lg:w-64'
-        onClick={query.toggle}
+        onClick={toggle}
       >
         <Icons.search className='mr-2 h-4 w-4' />
         Search...

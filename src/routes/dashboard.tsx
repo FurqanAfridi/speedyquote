@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import KBar from '@/components/kbar';
+import CommandMenu from '@/components/command-menu';
 import AppSidebar from '@/components/layout/app-sidebar';
 import Header from '@/components/layout/header';
 import { InfoSidebar } from '@/components/layout/info-sidebar';
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/dashboard')({
 
 function DashboardLayout() {
   return (
-    <KBar>
+    <CommandMenu>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -33,6 +33,6 @@ function DashboardLayout() {
           </InfobarProvider>
         </SidebarInset>
       </SidebarProvider>
-    </KBar>
+    </CommandMenu>
   );
 }
