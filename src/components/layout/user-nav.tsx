@@ -13,12 +13,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 export function UserNav() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button variant='ghost' className='relative h-8 w-8 rounded-full' />}
-      >
-        <Avatar className='h-8 w-8'>
-          <AvatarFallback>U</AvatarFallback>
-        </Avatar>
+      <DropdownMenuTrigger asChild>
+        <Button variant='ghost' className='relative h-8 w-8 rounded-full'>
+          <Avatar className='h-8 w-8'>
+            <AvatarFallback>U</AvatarFallback>
+          </Avatar>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className='w-56' align='end' sideOffset={10}>
         <DropdownMenuGroup>

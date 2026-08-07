@@ -50,7 +50,6 @@ export function DataTableColumnHeader<TData, TValue>({
         {column.getCanSort() && (
           <>
             <DropdownMenuCheckboxItem
-              closeOnClick
               className='[&_svg]:text-muted-foreground relative pr-8 pl-2 [&>span:first-child]:right-2 [&>span:first-child]:left-auto'
               checked={column.getIsSorted() === 'asc'}
               onClick={() => column.toggleSorting(false)}
@@ -59,7 +58,6 @@ export function DataTableColumnHeader<TData, TValue>({
               Asc
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
-              closeOnClick
               className='[&_svg]:text-muted-foreground relative pr-8 pl-2 [&>span:first-child]:right-2 [&>span:first-child]:left-auto'
               checked={column.getIsSorted() === 'desc'}
               onClick={() => column.toggleSorting(true)}
@@ -80,7 +78,6 @@ export function DataTableColumnHeader<TData, TValue>({
         )}
         {column.getCanHide() && (
           <DropdownMenuCheckboxItem
-            closeOnClick
             className='[&_svg]:text-muted-foreground relative pr-8 pl-2 [&>span:first-child]:right-2 [&>span:first-child]:left-auto'
             checked={!column.getIsVisible()}
             onClick={() => column.toggleVisibility(false)}

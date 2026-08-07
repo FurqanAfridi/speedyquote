@@ -64,7 +64,9 @@ export function DataTable<TData>({ table, actionBar, children }: DataTableProps<
                 ) : (
                   <TableRow>
                     <TableCell colSpan={table.getAllColumns().length} className='h-24 text-center'>
-                      No results.
+                      {table.getState().columnFilters.length > 0
+                        ? 'No results match your filters.'
+                        : 'No data to display yet.'}
                     </TableCell>
                   </TableRow>
                 )}

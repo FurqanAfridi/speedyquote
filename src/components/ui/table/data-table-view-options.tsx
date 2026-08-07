@@ -29,19 +29,17 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
 
   return (
     <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            aria-label='Toggle columns'
-            variant='outline'
-            size='sm'
-            className='ml-auto hidden h-8 lg:flex'
-          />
-        }
-      >
-        <Icons.adjustments />
-        View
-        <Icons.chevronsUpDown className='ml-auto opacity-50' />
+      <PopoverTrigger asChild>
+        <Button
+          aria-label='Toggle columns'
+          variant='outline'
+          size='sm'
+          className='ml-auto hidden h-8 lg:flex'
+        >
+          <Icons.adjustments />
+          View
+          <Icons.chevronsUpDown className='ml-auto opacity-50' />
+        </Button>
       </PopoverTrigger>
       <PopoverContent align='end' className='w-44 p-0'>
         <Command>

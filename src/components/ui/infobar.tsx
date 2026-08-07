@@ -195,7 +195,7 @@ function InfobarProvider({
 
   return (
     <InfobarContext.Provider value={contextValue}>
-      <TooltipProvider delay={0}>
+      <TooltipProvider delayDuration={0}>
         <div
           data-slot='infobar-wrapper'
           style={
@@ -552,7 +552,7 @@ function InfobarMenuButton({
 
   const button = useRender({
     defaultTagName: 'button',
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render,
     props: mergeProps<'button'>(
       {
         'data-slot': 'infobar-menu-button',
@@ -577,7 +577,7 @@ function InfobarMenuButton({
 
   return (
     <Tooltip>
-      {button}
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent
         side='right'
         align='center'

@@ -44,9 +44,11 @@ export function CellAction({ data }: CellActionProps) {
         loading={deleteMutation.isPending}
       />
       <DropdownMenu modal={false}>
-        <DropdownMenuTrigger render={<Button variant='ghost' className='h-8 w-8 p-0' />}>
-          <span className='sr-only'>Open menu</span>
-          <Icons.ellipsis className='h-4 w-4' />
+        <DropdownMenuTrigger asChild>
+          <Button variant='ghost' className='h-8 w-8 p-0'>
+            <span className='sr-only'>Open menu</span>
+            <Icons.ellipsis className='h-4 w-4' />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end'>
           <DropdownMenuGroup>

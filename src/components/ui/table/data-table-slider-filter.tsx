@@ -117,20 +117,25 @@ export function DataTableSliderFilter<TData>({ column, title }: DataTableSliderF
 
   return (
     <Popover>
-      <PopoverTrigger render={<Button variant='outline' size='sm' className='border-dashed' />}>
-        {columnFilterValue ? (
-          <DataTableFilterClear title={title} onReset={onReset} />
-        ) : (
-          <Icons.plusCircle />
-        )}
-        <span>{title}</span>
-        {columnFilterValue ? (
-          <>
-            <Separator orientation='vertical' className='mx-0.5 data-[orientation=vertical]:h-4' />
-            {formatValue(columnFilterValue[0])} - {formatValue(columnFilterValue[1])}
-            {unit ? ` ${unit}` : ''}
-          </>
-        ) : null}
+      <PopoverTrigger asChild>
+        <Button variant='outline' size='sm' className='border-dashed'>
+          {columnFilterValue ? (
+            <DataTableFilterClear title={title} onReset={onReset} />
+          ) : (
+            <Icons.plusCircle />
+          )}
+          <span>{title}</span>
+          {columnFilterValue ? (
+            <>
+              <Separator
+                orientation='vertical'
+                className='mx-0.5 data-[orientation=vertical]:h-4'
+              />
+              {formatValue(columnFilterValue[0])} - {formatValue(columnFilterValue[1])}
+              {unit ? ` ${unit}` : ''}
+            </>
+          ) : null}
+        </Button>
       </PopoverTrigger>
       <PopoverContent align='start' className='flex w-auto flex-col gap-4'>
         <div className='flex flex-col gap-3'>

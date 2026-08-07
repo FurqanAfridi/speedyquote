@@ -50,9 +50,11 @@ export default function SheetProductForm() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button />}>
-        <Icons.add className='mr-2 h-4 w-4' />
-        Add Product
+      <SheetTrigger asChild>
+        <Button>
+          <Icons.add className='mr-2 h-4 w-4' />
+          Add Product
+        </Button>
       </SheetTrigger>
       <SheetContent className='flex flex-col'>
         <SheetHeader>
