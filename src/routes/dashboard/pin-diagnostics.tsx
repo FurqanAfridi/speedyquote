@@ -26,7 +26,7 @@ function ApiHitsPage() {
   return (
     <PageContainer
       pageTitle='API'
-      pageDescription='Review lookup hits. Open test lookup when you need to try a PIN, ZIP, or caller ID.'
+      pageDescription='Review lookup hits. Open test lookup to try a PIN, ZIP, or caller ID.'
     >
       <div className='space-y-4'>
         <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end'>

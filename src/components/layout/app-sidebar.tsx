@@ -16,6 +16,7 @@ import { Link } from '@tanstack/react-router';
 import { useLocation, useRouter } from '@tanstack/react-router';
 import * as React from 'react';
 import { Icons } from '../icons';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   Sidebar,
   SidebarContent,
@@ -66,9 +67,7 @@ export default function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size='lg' asChild>
               <Link to='/dashboard/overview' aria-label={siteConfig.name}>
-                <div className='bg-primary text-primary-foreground flex aspect-square size-8 shrink-0 items-center justify-center rounded-md'>
-                  <Icons.logo className='size-4' />
-                </div>
+                <BrandLogo className='size-8' />
                 <div className='grid flex-1 text-left text-sm leading-tight'>
                   <span className='truncate font-semibold'>{orgName}</span>
                   <span className='text-muted-foreground truncate text-xs'>Dashboard</span>

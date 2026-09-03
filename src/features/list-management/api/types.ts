@@ -84,6 +84,24 @@ export const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
   visible_columns: []
 };
 
+export type RecordMutationInput = {
+  record_id?: number;
+  pin: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  address1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  zip4?: string | null;
+  age?: number | null;
+  homeowner_status?: string | null;
+  known_phone?: string | null;
+  list_source?: string | null;
+  vertical?: string | null;
+  attrs?: Record<string, string>;
+};
+
 export type UploadListResult = {
   recordsInserted: number;
   piecesCreated: number;

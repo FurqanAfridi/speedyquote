@@ -3,6 +3,7 @@ import { ageBandFromAge } from '../lib/csv';
 import type {
   ListRecordInput,
   PortalSettings,
+  RecordMutationInput,
   UploadListInput,
   UploadListResult,
   UploadedPiece
@@ -305,6 +306,96 @@ export async function listRecords(limit = 10000): Promise<UploadedPiece[]> {
   return out;
 }
 
+function pinError(message: string) {
+  if (message.includes('duplicate') || message.includes('unique')) {
+    return new Error('That PIN already exists on another record.');
+  }
+  return new Error(message);
+}
+
+export async function updateRecord(input: RecordMutationInput): Promise<void> {
+  if (!input.record_id) throw new Error('Missing record id');
+  const pin = (input.pin ?? '').trim();
+  const admin = createAdminClient();
+
+  const { error } = await admin
+    .from('records')
+    .update({
+      first_name: input.first_name ?? null,
+      last_name: input.last_name ?? null,
+      address1: input.address1 ?? null,
+      city: input.city ?? null,
+      state: input.state ?? null,
+      zip: input.zip ?? null,
+      zip4: input.zip4 ?? null,
+      age: input.age ?? null,
+      age_band: ageBandFromAge(input.age),
+      homeowner_status: input.homeowner_status ?? null,
+      known_phone: input.known_phone ?? null,
+      list_source: input.list_source ?? null,
+      vertical: input.vertical ?? null,
+      attrs: input.attrs ?? {},
+      updated_at: new Date().toISOString()
+    })
+    .eq('record_id', input.record_id);
+
+  if (error) throw new Error(error.message);
+
+  const { data: pieces, error: pieceReadError } = await admin
+    .from('mail_pieces')
+    .select('piece_id, pin_code')
+    .eq('record_id', input.record_id)
+    .order('piece_id', { ascending: false });
+
+  if (pieceReadError) throw new Error(pieceReadError.message);
+  const current = pieces?.[0];
+
+  if (!pin) {
+    const { error: delError } = await admin.from('mail_pieces').delete().eq('record_id', input.record_id);
+    if (delError) throw new Error(delError.message);
+    return;
+  }
+
+  if (current) {
+    if (current.pin_code !== pin) {
+      const { error: updError } = await admin
+        .from('mail_pieces')
+        .update({ pin_code: pin })
+        .eq('piece_id', current.piece_id);
+      if (updError) throw pinError(updError.message);
+    }
+    return;
+  }
+
+  const { error: insError } = await admin.from('mail_pieces').insert({
+    record_id: input.record_id,
+    pin_code: pin
+  });
+  if (insError) throw pinError(insError.message);
+}
+
+export async function deleteRecords(recordIds: number[]): Promise<number> {
+  const ids = [...new Set(recordIds.filter((id) => Number.isFinite(id)))];
+  if (!ids.length) throw new Error('No records selected');
+  if (ids.length > 500) throw new Error('Delete at most 500 records at a time');
+
+  const admin = createAdminClient();
+  const { error: pieceError } = await admin.from('mail_pieces').delete().in('record_id', ids);
+  if (pieceError) throw new Error(pieceError.message);
+
+  const { error, count } = await admin
+    .from('records')
+    .delete({ count: 'exact' })
+    .in('record_id', ids);
+  if (error) {
+    if (error.message.includes('foreign key') || error.message.includes('restrict')) {
+      throw new Error('Could not delete because related rows still exist.');
+    }
+    throw new Error(error.message);
+  }
+  return count ?? ids.length;
+}
+
 export type LookupLogRow = {
   request_id: number;
   timestamp: string;
@@ -334,7 +425,7 @@ export async function getOverviewStats() {
     admin.from('lookup_logs').select('*', { count: 'exact', head: true }),
     admin.from('lookup_logs').select('*', { count: 'exact', head: true }).eq('hit', true),
     listLookupLogs(12),
-    admin.from('records').select('vertical, state, list_source, created_at').order('record_id', { ascending: false }).limit(8000),
+    admin.from('records').select('vertical, state, list_source, created_at, homeowner_status, known_phone').order('record_id', { ascending: false }).limit(8000),
     admin.from('lookup_logs').select('hit, call_id, timestamp, latency_ms').order('timestamp', { ascending: false }).limit(500)
   ]);
 
@@ -351,6 +442,8 @@ export async function getOverviewStats() {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const logs24h = logs.filter((l) => new Date(l.timestamp as string).getTime() >= dayAgo);
   const recs7d = recs.filter((r) => r.created_at && new Date(r.created_at as string).getTime() >= weekAgo);
+  const withPhone = recs.filter((r) => r.known_phone).length;
+  const missingPin = Math.max(0, (records.count ?? 0) - (pieces.count ?? 0));
   const latencies = logs.map((l) => l.latency_ms).filter((n): n is number => typeof n === 'number');
   const avgLatency = latencies.length
     ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
@@ -362,6 +455,8 @@ export async function getOverviewStats() {
     lookupCount: lookups.count ?? 0,
     hitCount: hits.count ?? 0,
     recordsLast7Days: recs7d.length,
+    withPhoneCount: withPhone,
+    missingPinCount: missingPin,
     lookupsLast24h: logs24h.length,
     hitsLast24h: logs24h.filter((l) => l.hit).length,
     uniqueStates: new Set(recs.map((r) => r.state).filter(Boolean)).size,
@@ -370,6 +465,7 @@ export async function getOverviewStats() {
     byVertical: countBy(recs.map((r) => r.vertical as string | null)),
     byState: countBy(recs.map((r) => r.state as string | null)).slice(0, 12),
     byListSource: countBy(recs.map((r) => r.list_source as string | null)),
+    byHomeowner: countBy(recs.map((r) => r.homeowner_status as string | null)),
     byLookupMethod: countBy(logs.map((l) => (l.call_id as string | null) ?? 'unknown')),
     recentLogs: recent
   };

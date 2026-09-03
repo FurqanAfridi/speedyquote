@@ -10,15 +10,24 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  deleteRecordsFn,
   getListUploadOptions,
   updatePortalSettings,
+  updateRecordFn,
   uploadMailingList
 } from '@/features/list-management/api/server';
 import { DEFAULT_PORTAL_SETTINGS } from '@/features/list-management/api/types';
-import type { ColumnMapping, MappedField, PortalSettings, UploadedPiece } from '@/features/list-management/api/types';
+import type {
+  ColumnMapping,
+  MappedField,
+  PortalSettings,
+  RecordMutationInput,
+  UploadedPiece
+} from '@/features/list-management/api/types';
 import {
   applyMapping,
   FIELD_LABELS,
@@ -40,6 +49,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+import { RecordFormDialog } from '@/features/list-management/components/record-form-dialog';
 
 async function fileToRows(file: File): Promise<{ headers: string[]; rows: Record<string, string>[] }> {
   const name = file.name.toLowerCase();
@@ -142,6 +162,10 @@ export function ListUploadPage() {
   const [filterVertical, setFilterVertical] = React.useState('');
   const [page, setPage] = React.useState(0);
   const pageSize = 20;
+  const [selected, setSelected] = React.useState<number[]>([]);
+  const [formOpen, setFormOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<UploadedPiece | null>(null);
+  const [deleteIds, setDeleteIds] = React.useState<number[] | null>(null);
 
   React.useEffect(() => {
     if (!optionsQuery.data?.settings) return;
@@ -159,6 +183,56 @@ export function ListUploadPage() {
       uploadMailingList({ data: input }),
     onSuccess: (result) => {
       toast.success(`Saved ${result.recordsInserted} records`);
+      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
+      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
+  const saveRecord = useMutation({
+    mutationFn: (data: RecordMutationInput) => {
+      if (data.record_id) return updateRecordFn({ data });
+      return uploadMailingList({
+        data: {
+          records: [
+            {
+              pin: data.pin,
+              first_name: data.first_name,
+              last_name: data.last_name,
+              address1: data.address1,
+              city: data.city,
+              state: data.state,
+              zip: data.zip,
+              zip4: data.zip4,
+              age: data.age,
+              homeowner_status: data.homeowner_status,
+              known_phone: data.known_phone,
+              list_source: data.list_source,
+              vertical: data.vertical,
+              attrs: data.attrs
+            }
+          ],
+          listSource: data.list_source,
+          vertical: data.vertical
+        }
+      });
+    },
+    onSuccess: () => {
+      toast.success(editing ? 'Record updated' : 'Record created');
+      setFormOpen(false);
+      setEditing(null);
+      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
+      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
+  const removeRecords = useMutation({
+    mutationFn: (recordIds: number[]) => deleteRecordsFn({ data: { recordIds } }),
+    onSuccess: (result) => {
+      toast.success(`Deleted ${result.deleted} record${result.deleted === 1 ? '' : 's'}`);
+      setSelected([]);
+      setDeleteIds(null);
       void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
       void queryClient.invalidateQueries({ queryKey: ['overview'] });
     },
@@ -268,7 +342,7 @@ export function ListUploadPage() {
   return (
     <PageContainer
       pageTitle='Records'
-      pageDescription='Upload a list, then browse records without stretching the page.'
+      pageDescription='Upload lists, pick columns, and manage every row.'
     >
       <div className='flex min-w-0 flex-col gap-6'>
       <Card className='min-w-0 overflow-hidden'>
@@ -404,7 +478,28 @@ export function ListUploadPage() {
               {recent.length !== filtered.length ? ` of ${recent.length}` : ''}
             </CardDescription>
           </div>
-          <DropdownMenu>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Button
+              type='button'
+              size='sm'
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              New record
+            </Button>
+            {selected.length > 0 && (
+              <Button
+                type='button'
+                size='sm'
+                variant='destructive'
+                onClick={() => setDeleteIds(selected)}
+              >
+                Delete selected ({selected.length})
+              </Button>
+            )}
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type='button' variant='outline' size='sm'>
                 Filter columns
@@ -425,6 +520,7 @@ export function ListUploadPage() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </CardHeader>
         <CardContent className='min-w-0 space-y-3'>
           <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
@@ -474,6 +570,22 @@ export function ListUploadPage() {
                   <table className='w-max min-w-full text-left text-sm'>
                     <thead className='bg-background sticky top-0 z-10'>
                       <tr className='border-b'>
+                        <th className='w-10 px-3 py-2'>
+                          <Checkbox
+                            checked={
+                              paged.length > 0 && paged.every((p) => selected.includes(p.record_id))
+                            }
+                            onCheckedChange={(v) => {
+                              const ids = paged.map((p) => p.record_id);
+                              setSelected((cur) =>
+                                v === true
+                                  ? [...new Set([...cur, ...ids])]
+                                  : cur.filter((id) => !ids.includes(id))
+                              );
+                            }}
+                            aria-label='Select page'
+                          />
+                        </th>
                         {shownColumns.map((c) => (
                           <th
                             key={c.id}
@@ -482,11 +594,27 @@ export function ListUploadPage() {
                             {c.label}
                           </th>
                         ))}
+                        <th className='text-muted-foreground px-3 py-2 font-medium whitespace-nowrap'>
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {paged.map((p) => (
                         <tr key={p.record_id} className='border-b border-border/60 last:border-0'>
+                          <td className='px-3 py-2'>
+                            <Checkbox
+                              checked={selected.includes(p.record_id)}
+                              onCheckedChange={(v) =>
+                                setSelected((cur) =>
+                                  v === true
+                                    ? [...cur, p.record_id]
+                                    : cur.filter((id) => id !== p.record_id)
+                                )
+                              }
+                              aria-label={`Select ${p.record_id}`}
+                            />
+                          </td>
                           {shownColumns.map((c) => {
                             const value = cellValue(p, c.id);
                             return (
@@ -498,6 +626,29 @@ export function ListUploadPage() {
                               </td>
                             );
                           })}
+                          <td className='px-3 py-2 whitespace-nowrap'>
+                            <div className='flex gap-1'>
+                              <Button
+                                type='button'
+                                size='sm'
+                                variant='outline'
+                                onClick={() => {
+                                  setEditing(p);
+                                  setFormOpen(true);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type='button'
+                                size='sm'
+                                variant='ghost'
+                                onClick={() => setDeleteIds([p.record_id])}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -534,6 +685,41 @@ export function ListUploadPage() {
         </CardContent>
       </Card>
       </div>
+      <RecordFormDialog
+        open={formOpen}
+        record={editing}
+        settings={settings}
+        extraKeys={attrKeys}
+        pending={saveRecord.isPending}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) setEditing(null);
+        }}
+        onSave={(data) => saveRecord.mutate(data)}
+      />
+      <AlertDialog open={Boolean(deleteIds?.length)} onOpenChange={(open) => !open && setDeleteIds(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {deleteIds?.length === 1 ? 'this record' : `${deleteIds?.length ?? 0} records`}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the row and its PIN from lookup. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removeRecords.isPending}
+              onClick={() => {
+                if (deleteIds?.length) removeRecords.mutate(deleteIds);
+              }}
+            >
+              {removeRecords.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }

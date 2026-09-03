@@ -7,14 +7,16 @@ import {
   revokeLookupApiKey
 } from './keys';
 import {
+  deleteRecords,
   getOverviewStats,
   getPortalSettings,
   listLookupLogs,
   listRecords,
   savePortalSettings,
+  updateRecord,
   uploadList
 } from './service';
-import type { PortalSettings, UploadListInput } from './types';
+import type { PortalSettings, RecordMutationInput, UploadListInput } from './types';
 
 async function gate() {
   try {
@@ -56,6 +58,22 @@ export const uploadMailingList = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await gate();
     return uploadList(data);
+  });
+
+export const updateRecordFn = createServerFn({ method: 'POST' })
+  .validator((data: RecordMutationInput) => data)
+  .handler(async ({ data }) => {
+    await gate();
+    await updateRecord(data);
+    return { ok: true };
+  });
+
+export const deleteRecordsFn = createServerFn({ method: 'POST' })
+  .validator((data: { recordIds: number[] }) => data)
+  .handler(async ({ data }) => {
+    await gate();
+    const deleted = await deleteRecords(data.recordIds);
+    return { deleted };
   });
 
 export const testPinLookupFn = createServerFn({ method: 'POST' })
