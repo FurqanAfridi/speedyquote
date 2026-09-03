@@ -1,0 +1,3 @@
+pin,first_name,last_name,state,zip,age,homeowner_status,phone,plan_type
+1234567890,Maria,Lopez,FL,33602,68,owner,8135550101,final_expense
+MED-9911,James,Nguyen,TX,78701,72,,5125550102,medicare_advantage

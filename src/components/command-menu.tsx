@@ -13,8 +13,6 @@ import {
 } from '@/components/ui/command';
 import { navGroups } from '@/config/nav-config';
 import { useFilteredNavGroups } from '@/hooks/use-nav';
-import { useThemeConfig } from '@/components/themes/active-theme';
-import { THEMES } from '@/components/themes/theme.config';
 
 type CommandMenuContextValue = {
   open: boolean;
@@ -52,7 +50,7 @@ function SequenceHotkey({
 // Sequences owned by the global theme shortcuts. A nav item carrying the same
 // combo (Dashboard's `d d`) yields to the theme toggle and is not bound or
 // badged as a navigation sequence.
-const RESERVED_SEQUENCES = new Set(['t,t', 'd,d']);
+const RESERVED_SEQUENCES = new Set(['d,d']);
 const isReserved = (shortcut?: string[]) =>
   !!shortcut?.length && RESERVED_SEQUENCES.has(shortcut.join(','));
 
@@ -69,13 +67,6 @@ export default function CommandMenu({ children }: { children: React.ReactNode })
   const toggle = React.useCallback(() => setOpen((prev) => !prev), []);
 
   const { theme, setTheme } = useTheme();
-  const { activeTheme, setActiveTheme } = useThemeConfig();
-
-  const cycleTheme = React.useCallback(() => {
-    const currentIndex = THEMES.findIndex((t) => t.value === activeTheme);
-    const nextIndex = (currentIndex + 1) % THEMES.length;
-    setActiveTheme(THEMES[nextIndex].value);
-  }, [activeTheme, setActiveTheme]);
 
   const toggleDarkLight = React.useCallback(() => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -85,7 +76,6 @@ export default function CommandMenu({ children }: { children: React.ReactNode })
   // while an input/textarea is focused by default, so these stay out of the way
   // of the form fields throughout the app.
   useHotkey('Mod+K', toggle);
-  useHotkeySequence(['T', 'T'], cycleTheme);
   useHotkeySequence(['D', 'D'], toggleDarkLight);
 
   const filteredGroups = useFilteredNavGroups(navGroups);
@@ -190,10 +180,6 @@ export default function CommandMenu({ children }: { children: React.ReactNode })
           ))}
 
           <CommandGroup heading='Theme'>
-            <CommandItem value='Switch Theme' onSelect={() => runAndClose(cycleTheme)}>
-              <span>Switch Theme</span>
-              <CommandShortcut>TT</CommandShortcut>
-            </CommandItem>
             <CommandItem
               value='Toggle Dark Light Mode'
               onSelect={() => runAndClose(toggleDarkLight)}

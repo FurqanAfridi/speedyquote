@@ -2,12 +2,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { navGroups } from '@/config/nav-config';
+import { siteConfig } from '@/config/site';
+import { useAuth } from '@/features/auth/auth-context';
+import { fetchPortalSettings } from '@/features/list-management/api/server';
+import { useQuery } from '@tanstack/react-query';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFilteredNavGroups } from '@/hooks/use-nav';
 import { Link } from '@tanstack/react-router';
@@ -34,7 +36,24 @@ export default function AppSidebar() {
   const { pathname } = useLocation();
   const { isOpen } = useMediaQuery();
   const router = useRouter();
+  const { user, signOut } = useAuth();
   const filteredGroups = useFilteredNavGroups(navGroups);
+  const settingsQuery = useQuery({
+    queryKey: ['portal-settings'],
+    queryFn: () => fetchPortalSettings().catch(() => null),
+    staleTime: 60_000
+  });
+  const orgName = settingsQuery.data?.org_name || siteConfig.shortName;
+
+  const email = user?.email ?? '';
+  // Supabase only guarantees an email; a display name is optional metadata.
+  const displayName =
+    (user?.user_metadata?.full_name as string | undefined) ?? email.split('@')[0] ?? 'Account';
+
+  async function handleSignOut() {
+    await signOut();
+    router.navigate({ to: '/auth/sign-in', replace: true });
+  }
 
   React.useEffect(() => {
     // Side effects based on sidebar state changes
@@ -46,12 +65,12 @@ export default function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size='lg' asChild>
-              <Link to='/dashboard/overview' aria-label='Dashboard'>
+              <Link to='/dashboard/overview' aria-label={siteConfig.name}>
                 <div className='bg-primary text-primary-foreground flex aspect-square size-8 shrink-0 items-center justify-center rounded-md'>
                   <Icons.logo className='size-4' />
                 </div>
                 <div className='grid flex-1 text-left text-sm leading-tight'>
-                  <span className='truncate font-semibold'>TanStack Start</span>
+                  <span className='truncate font-semibold'>{orgName}</span>
                   <span className='text-muted-foreground truncate text-xs'>Dashboard</span>
                 </div>
               </Link>
@@ -127,8 +146,8 @@ export default function AppSidebar() {
                     <Icons.account className='size-4' />
                   </div>
                   <div className='grid flex-1 text-left text-sm leading-tight'>
-                    <span className='truncate font-medium'>User</span>
-                    <span className='text-muted-foreground truncate text-xs'>user@example.com</span>
+                    <span className='truncate font-medium'>{displayName}</span>
+                    <span className='text-muted-foreground truncate text-xs'>{email}</span>
                   </div>
                   <Icons.chevronsDown className='ml-auto size-4' />
                 </SidebarMenuButton>
@@ -139,21 +158,17 @@ export default function AppSidebar() {
                 align='end'
                 sideOffset={4}
               >
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => router.navigate({ to: '/dashboard/notifications' })}
-                  >
-                    <Icons.notification className='mr-2 h-4 w-4' />
-                    Notifications
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
                   <Icons.logout className='mr-2 h-4 w-4' />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <p className='text-muted-foreground group-data-[collapsible=icon]:hidden px-2 pb-1 text-[10px] tracking-wide uppercase'>
+              Powered by {siteConfig.poweredBy}
+            </p>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -1,12 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
-import { createServerFn } from '@tanstack/react-start';
 
 import { Toaster } from '@/components/ui/sonner';
-import { ActiveThemeProvider } from '@/components/themes/active-theme';
+import { AuthProvider } from '@/features/auth/auth-context';
 import ThemeProvider from '@/components/themes/theme-provider';
-import { DEFAULT_THEME, THEMES } from '@/components/themes/theme.config';
 import { seo } from '@/lib/seo';
 
 import appCss from '@/styles/globals.css?url';
@@ -15,16 +13,6 @@ const META_THEME_COLORS = {
   light: '#ffffff',
   dark: '#09090b'
 };
-
-const getActiveTheme = createServerFn({ method: 'GET' }).handler(async () => {
-  const { getCookie } = await import('@tanstack/react-start/server');
-  const cookieValue = getCookie('active_theme');
-  if (cookieValue) {
-    const isValid = THEMES.some((t) => t.value === cookieValue);
-    if (isValid) return cookieValue;
-  }
-  return DEFAULT_THEME;
-});
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -42,18 +30,15 @@ export const Route = createRootRouteWithContext<{
       { rel: 'apple-touch-icon', href: '/favicon.svg' }
     ]
   }),
-  loader: async () => {
-    const activeTheme = await getActiveTheme();
-    return { activeTheme };
-  },
   component: RootDocument
 });
 
 function RootDocument() {
-  const { activeTheme } = Route.useLoaderData();
-
+  // The palette is fixed to the single remaining theme. Light/dark is handled
+  // separately by ThemeProvider, which toggles the `dark` class that
+  // themes/whatsapp.css keys its dark variables off.
   return (
-    <html lang='en' suppressHydrationWarning data-theme={activeTheme}>
+    <html lang='en' suppressHydrationWarning data-theme='whatsapp'>
       <head>
         <HeadContent />
         <script
@@ -76,10 +61,10 @@ function RootDocument() {
           disableTransitionOnChange
           enableColorScheme
         >
-          <ActiveThemeProvider initialTheme={activeTheme}>
+          <AuthProvider>
             <Toaster />
             <Outlet />
-          </ActiveThemeProvider>
+          </AuthProvider>
         </ThemeProvider>
         <TanStackRouterDevtools position='bottom-left' />
         <Scripts />

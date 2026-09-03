@@ -1,0 +1,461 @@
+import * as React from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import PageContainer from '@/components/layout/page-container';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useAuth } from '@/features/auth/auth-context';
+import { supabase } from '@/lib/supabase/client';
+import {
+  createLookupApiKeyFn,
+  fetchLookupApiKeys,
+  revokeLookupApiKeyFn
+} from '@/features/list-management/api/server';
+import { slugifyColumnKey } from '@/features/list-management/lib/columns';
+import { settingsOrDefault, usePortalSettings, useSavePortalSettings } from './use-portal-settings';
+
+export function SettingsPage() {
+  return (
+    <PageContainer
+      pageTitle='Settings'
+      pageDescription='Account, list fields, verticals, and API keys for lookup integrations.'
+    >
+      <div className='space-y-6'>
+        <AccountCard />
+        <PortalCard />
+        <ApiKeysCard />
+      </div>
+    </PageContainer>
+  );
+}
+
+function AccountCard() {
+  const { user } = useAuth();
+  const email = user?.email ?? '';
+  const [name, setName] = React.useState(
+    (user?.user_metadata?.full_name as string | undefined) ?? ''
+  );
+  const [currentPassword, setCurrentPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [savingProfile, setSavingProfile] = React.useState(false);
+  const [savingPassword, setSavingPassword] = React.useState(false);
+
+  React.useEffect(() => {
+    setName((user?.user_metadata?.full_name as string | undefined) ?? '');
+  }, [user]);
+
+  async function saveProfile() {
+    if (!supabase) {
+      toast.error('Supabase is not configured');
+      return;
+    }
+    setSavingProfile(true);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: name.trim() } });
+    setSavingProfile(false);
+    if (error) toast.error(error.message);
+    else toast.success('Name updated');
+  }
+
+  async function savePassword() {
+    if (!supabase || !email) {
+      toast.error('Supabase is not configured');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (!currentPassword) {
+      toast.error('Enter your current password');
+      return;
+    }
+    setSavingPassword(true);
+    const { error: signError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword
+    });
+    if (signError) {
+      setSavingPassword(false);
+      toast.error('Current password is incorrect');
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setSavingPassword(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    toast.success('Password updated');
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Account</CardTitle>
+        <CardDescription>Display name and password for this login.</CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-6'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+          <div className='space-y-2'>
+            <Label htmlFor='account-name'>Name</Label>
+            <Input
+              id='account-name'
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder='Your name'
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='account-email'>Email</Label>
+            <Input id='account-email' value={email} disabled />
+          </div>
+        </div>
+        <Button type='button' disabled={savingProfile} onClick={() => void saveProfile()}>
+          {savingProfile ? 'Saving…' : 'Save name'}
+        </Button>
+
+        <div className='border-t pt-4'>
+          <p className='mb-3 text-sm font-medium'>Change password</p>
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
+            <div className='space-y-2'>
+              <Label htmlFor='current-password'>Current</Label>
+              <Input
+                id='current-password'
+                type='password'
+                autoComplete='current-password'
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='new-password'>New</Label>
+              <Input
+                id='new-password'
+                type='password'
+                autoComplete='new-password'
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='confirm-password'>Confirm</Label>
+              <Input
+                id='confirm-password'
+                type='password'
+                autoComplete='new-password'
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            type='button'
+            className='mt-3'
+            variant='secondary'
+            disabled={savingPassword}
+            onClick={() => void savePassword()}
+          >
+            {savingPassword ? 'Updating…' : 'Update password'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PortalCard() {
+  const query = usePortalSettings();
+  const save = useSavePortalSettings();
+  const saved = settingsOrDefault(query.data);
+  const [orgName, setOrgName] = React.useState(saved.org_name);
+  const [listSource, setListSource] = React.useState(saved.default_list_source);
+  const [verticalName, setVerticalName] = React.useState('');
+  const [colKey, setColKey] = React.useState('');
+  const [colDefault, setColDefault] = React.useState('');
+
+  React.useEffect(() => {
+    if (!query.data) return;
+    setOrgName(query.data.org_name);
+    setListSource(query.data.default_list_source);
+  }, [query.data]);
+
+  function persist(next: Partial<typeof saved>) {
+    save.mutate({ ...saved, org_name: orgName, default_list_source: listSource, ...next });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>List & data</CardTitle>
+        <CardDescription>
+          Portal name, default list source, verticals for uploads, and extra columns.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-6'>
+        {query.isError && <p className='text-destructive text-sm'>{query.error.message}</p>}
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+          <div className='space-y-2'>
+            <Label htmlFor='org-name'>Organization name</Label>
+            <Input id='org-name' value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='list-source'>Default list source</Label>
+            <Input
+              id='list-source'
+              value={listSource}
+              onChange={(e) => setListSource(e.target.value)}
+            />
+          </div>
+        </div>
+        <Button
+          type='button'
+          disabled={save.isPending}
+          onClick={() => persist({})}
+        >
+          {save.isPending ? 'Saving…' : 'Save list settings'}
+        </Button>
+
+        <div className='grid gap-6 lg:grid-cols-2'>
+          <div className='space-y-3'>
+            <p className='text-sm font-medium'>Verticals</p>
+            <div className='flex flex-col gap-2 sm:flex-row'>
+              <Input
+                placeholder='e.g. medicare'
+                value={verticalName}
+                onChange={(e) => setVerticalName(e.target.value)}
+              />
+              <Button
+                type='button'
+                variant='outline'
+                disabled={save.isPending}
+                onClick={() => {
+                  const name = verticalName.trim();
+                  if (!name) return;
+                  if (saved.verticals.some((v) => v.name.toLowerCase() === name.toLowerCase())) return;
+                  persist({ verticals: [...saved.verticals, { name }] });
+                  setVerticalName('');
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {saved.verticals.length === 0 ? (
+              <p className='text-muted-foreground text-sm'>None yet — add one before uploading.</p>
+            ) : (
+              <ul className='space-y-2'>
+                {saved.verticals.map((v) => (
+                  <li
+                    key={v.name}
+                    className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
+                  >
+                    <span className='truncate'>{v.name}</span>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      onClick={() =>
+                        persist({ verticals: saved.verticals.filter((x) => x.name !== v.name) })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className='space-y-3'>
+            <p className='text-sm font-medium'>Extra columns</p>
+            <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
+              <Input
+                placeholder='column key'
+                value={colKey}
+                onChange={(e) => setColKey(e.target.value)}
+              />
+              <Input
+                placeholder='default'
+                value={colDefault}
+                onChange={(e) => setColDefault(e.target.value)}
+              />
+              <Button
+                type='button'
+                variant='outline'
+                disabled={save.isPending}
+                onClick={() => {
+                  const key = slugifyColumnKey(colKey);
+                  if (!key) return;
+                  if (saved.extra_columns.some((c) => c.key === key)) return;
+                  persist({
+                    extra_columns: [...saved.extra_columns, { key, default_value: colDefault }]
+                  });
+                  setColKey('');
+                  setColDefault('');
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {saved.extra_columns.length === 0 ? (
+              <p className='text-muted-foreground text-sm'>Optional fields added on every upload.</p>
+            ) : (
+              <ul className='space-y-2'>
+                {saved.extra_columns.map((c) => (
+                  <li
+                    key={c.key}
+                    className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
+                  >
+                    <span className='truncate'>
+                      {c.key}
+                      {c.default_value ? (
+                        <span className='text-muted-foreground'> · {c.default_value}</span>
+                      ) : null}
+                    </span>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      onClick={() =>
+                        persist({ extra_columns: saved.extra_columns.filter((x) => x.key !== c.key) })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApiKeysCard() {
+  const queryClient = useQueryClient();
+  const [name, setName] = React.useState('');
+  const [revealed, setRevealed] = React.useState<string | null>(null);
+
+  const keysQuery = useQuery({
+    queryKey: ['lookup-api-keys'],
+    queryFn: () => fetchLookupApiKeys()
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (apiName: string) => createLookupApiKeyFn({ data: { name: apiName } }),
+    onSuccess: (created) => {
+      setRevealed(created.token);
+      setName('');
+      void queryClient.invalidateQueries({ queryKey: ['lookup-api-keys'] });
+      toast.success('API created — copy the token now');
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: number) => revokeLookupApiKeyFn({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lookup-api-keys'] });
+      toast.success('API revoked');
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>APIs</CardTitle>
+        <CardDescription>
+          Create a Bearer token per integration (Ringba, test, another buyer). Use it as{' '}
+          <code className='text-xs'>Authorization: Bearer …</code> on{' '}
+          <code className='text-xs'>POST /api/pin-lookup</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {keysQuery.isError && (
+          <p className='text-destructive text-sm'>{keysQuery.error.message}</p>
+        )}
+        <div className='flex flex-col gap-2 sm:flex-row'>
+          <Input
+            placeholder='Name, e.g. Ringba live'
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button
+            type='button'
+            disabled={createMutation.isPending || !name.trim()}
+            onClick={() => createMutation.mutate(name.trim())}
+          >
+            {createMutation.isPending ? 'Creating…' : 'Create API'}
+          </Button>
+        </div>
+
+        {revealed && (
+          <div className='space-y-2 rounded-md border p-3'>
+            <p className='text-sm font-medium'>Copy this token now. It will not be shown again.</p>
+            <pre className='bg-muted overflow-x-auto rounded-md p-2 text-xs break-all whitespace-pre-wrap'>
+              {revealed}
+            </pre>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => {
+                void navigator.clipboard.writeText(revealed);
+                toast.success('Copied');
+              }}
+            >
+              Copy
+            </Button>
+          </div>
+        )}
+
+        {keysQuery.isLoading ? (
+          <p className='text-muted-foreground text-sm'>Loading…</p>
+        ) : (keysQuery.data ?? []).length === 0 ? (
+          <p className='text-muted-foreground text-sm'>No APIs yet.</p>
+        ) : (
+          <ul className='space-y-2'>
+            {(keysQuery.data ?? []).map((key) => (
+              <li
+                key={key.id}
+                className='flex flex-col gap-2 rounded-md border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between'
+              >
+                <div className='min-w-0'>
+                  <p className='font-medium'>{key.name}</p>
+                  <p className='text-muted-foreground font-mono text-xs'>{key.token_prefix}</p>
+                  <p className='text-muted-foreground text-xs'>
+                    Created {new Date(key.created_at).toLocaleDateString()}
+                    {key.last_used_at
+                      ? ` · last used ${new Date(key.last_used_at).toLocaleString()}`
+                      : ' · never used'}
+                  </p>
+                </div>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  disabled={revokeMutation.isPending}
+                  onClick={() => revokeMutation.mutate(key.id)}
+                >
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

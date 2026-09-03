@@ -1,23 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://tanstack-start-dashboard.kiranism.dev/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+    <loc>https://speedyquote.devdabs.com/</loc>
   </url>
   <url>
-    <loc>https://tanstack-start-dashboard.kiranism.dev/about</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://speedyquote.devdabs.com/about</loc>
   </url>
   <url>
-    <loc>https://tanstack-start-dashboard.kiranism.dev/privacy-policy</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
+    <loc>https://speedyquote.devdabs.com/privacy-policy</loc>
   </url>
   <url>
-    <loc>https://tanstack-start-dashboard.kiranism.dev/terms-of-service</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
+    <loc>https://speedyquote.devdabs.com/terms-of-service</loc>
   </url>
 </urlset>

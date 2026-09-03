@@ -1,10 +1,10 @@
 {
-  "name": "tanstack-dashboard",
+  "name": "speedy-quote-dashboard",
   "version": "1.0.0",
   "private": true,
   "author": {
-    "name": "Kiran",
-    "url": "https://github.com/Kiranism"
+    "name": "DevDabs",
+    "url": "https://devdabs.com"
   },
   "type": "module",
   "scripts": {
@@ -38,6 +38,8 @@
     "@fontsource/space-mono": "^5.0.20",
     "@hookform/resolvers": "^5.7.1",
     "@shadcn/react": "^0.2.1",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.114.0",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-form": "^1.28.5",
     "@tanstack/react-hotkeys": "^0.10.0",
@@ -74,6 +76,7 @@
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
     "vite-tsconfig-paths": "^5.1.4",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
   },

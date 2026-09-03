@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 
+import { siteConfig } from '@/config/site';
 import { seo } from '@/lib/seo';
 
 export const Route = createFileRoute('/privacy-policy')({
   head: () => ({
     meta: seo({
       title: 'Privacy Policy',
-      description:
-        'Privacy policy for the TanStack Start Dashboard starter template — how the demo application handles data.',
+      description: `Privacy policy for ${siteConfig.name}.`,
       path: '/privacy-policy'
     })
   }),
@@ -22,55 +22,33 @@ function PrivacyPolicyPage() {
         <section>
           <h2 className='text-foreground mb-3 text-xl font-semibold'>Introduction</h2>
           <p className='text-muted-foreground text-base leading-relaxed'>
-            This Privacy Policy explains how we handle your personal information when you use our
-            application. We are committed to protecting your privacy and ensuring transparency about
-            our data practices. Please read this policy carefully to understand how we collect, use,
-            and safeguard your information.
+            This Privacy Policy explains how {siteConfig.name} handles personal information. We are
+            committed to protecting privacy and being transparent about data practices.
           </p>
         </section>
         <section>
           <h2 className='text-foreground mb-3 text-xl font-semibold'>Data Collection</h2>
           <p className='text-muted-foreground text-base leading-relaxed'>
-            Our application collects minimal data necessary for authentication purposes. When you
-            sign in using our authentication provider, we receive basic profile information such as
-            your email address and name. This data is used solely to identify you within the
-            application and provide personalized access to features.
+            We collect account credentials for sign-in, plus mailing-list and call data you upload
+            or sync for attribution. That data is used only to operate the dashboard and PIN lookup
+            service.
           </p>
         </section>
         <section>
           <h2 className='text-foreground mb-3 text-xl font-semibold'>No Data Misuse</h2>
           <p className='text-muted-foreground text-base leading-relaxed'>
-            We take your privacy seriously. We want to assure you that your personal data is never
-            sold, rented, or shared with third parties for marketing or commercial purposes. Your
-            information is used exclusively for the intended functionality of this application and
-            is never misused or exploited in any way.
+            Personal data is never sold, rented, or shared with third parties for marketing. It is
+            used exclusively for the intended functionality of this application.
           </p>
         </section>
         <section>
-          <h2 className='text-foreground mb-3 text-xl font-semibold'>Demo Application</h2>
+          <h2 className='text-foreground mb-3 text-xl font-semibold'>Contact</h2>
           <p className='text-muted-foreground text-base leading-relaxed'>
-            Please note that this is a demo application created for demonstration and educational
-            purposes. It showcases various features and technologies but should not be considered a
-            production-ready service. Any data you provide may be temporary and could be removed at
-            any time as part of regular maintenance.
-          </p>
-        </section>
-        <section>
-          <h2 className='text-foreground mb-3 text-xl font-semibold'>Contact Us</h2>
-          <p className='text-muted-foreground text-base leading-relaxed'>
-            If you have any questions, concerns, or requests regarding this Privacy Policy or our
-            data practices, please feel free to contact us at{' '}
-            <a
-              href='mailto:contact@kiranism.dev'
-              className='text-primary font-medium hover:underline'
-            >
-              contact@kiranism.dev
-            </a>
-            .
+            Questions about this policy can be directed to your account administrator.
           </p>
         </section>
         <div className='border-border border-t pt-4'>
-          <p className='text-muted-foreground text-sm'>Last updated: February 2026</p>
+          <p className='text-muted-foreground text-sm'>Last updated: September 2026</p>
         </div>
       </div>
     </div>

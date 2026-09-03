@@ -14,9 +14,19 @@ build
 # TanStack Router generated
 src/routeTree.gen.ts
 
-# Environment variables
+# Environment / secrets — never commit these
 .env
-.env*.local
+.env.*
+!.env.example
+!.env.example.txt
+*.pem
+*.key
+credentials.json
+
+# Local data dumps
+*.xlsx
+*.xls
+!public/samples/**
 
 # IDEs and editors
 .vscode/*
@@ -25,6 +35,7 @@ src/routeTree.gen.ts
 !.vscode/launch.json
 !.vscode/extensions.json
 .idea
+.cursor
 *.swp
 *.swo
 *~
@@ -43,9 +54,6 @@ lerna-debug.log*
 .turbo
 .nx
 
-# Better-T-Stack
-.alchemy
-
 # Testing
 coverage
 .nyc_output
@@ -55,6 +63,5 @@ coverage
 .cache
 tmp
 temp
-
-# clerk configuration (can include secrets)
+supabase/.temp
 /.clerk/
