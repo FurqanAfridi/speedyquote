@@ -470,15 +470,14 @@ export function ListUploadPage() {
           ) : (
             <>
               <div className='w-full min-w-0 overflow-hidden rounded-md border'>
-                <div className='max-h-[min(28rem,55vh)] overflow-y-auto overflow-x-hidden'>
-                  <table className='w-full table-fixed text-left text-sm'>
+                <div className='max-h-[min(28rem,55vh)] overflow-auto'>
+                  <table className='w-max min-w-full text-left text-sm'>
                     <thead className='bg-background sticky top-0 z-10'>
                       <tr className='border-b'>
                         {shownColumns.map((c) => (
                           <th
                             key={c.id}
-                            className='text-muted-foreground truncate px-2 py-2 font-medium'
-                            title={c.label}
+                            className='text-muted-foreground px-3 py-2 font-medium whitespace-nowrap'
                           >
                             {c.label}
                           </th>
@@ -493,8 +492,7 @@ export function ListUploadPage() {
                             return (
                               <td
                                 key={c.id}
-                                className={`truncate px-2 py-2 ${c.id === 'pin' ? 'font-mono' : ''}`}
-                                title={value}
+                                className={`px-3 py-2 whitespace-nowrap ${c.id === 'pin' ? 'font-mono' : ''}`}
                               >
                                 {value}
                               </td>

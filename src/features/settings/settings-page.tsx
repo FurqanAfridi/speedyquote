@@ -455,7 +455,136 @@ function ApiKeysCard() {
             ))}
           </ul>
         )}
+
+        <ApiUsageGuide token={revealed} />
       </CardContent>
     </Card>
+  );
+}
+
+function ApiUsageGuide({ token }: { token: string | null }) {
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com';
+  const url = `${origin}/api/pin-lookup`;
+  const bearer = token ?? 'YOUR_API_TOKEN';
+
+  const curlPin = `curl -X POST '${url}' \\
+  -H 'Authorization: Bearer ${bearer}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"pin":"ABC123"}'`;
+
+  const curlZip = `curl -X POST '${url}' \\
+  -H 'Authorization: Bearer ${bearer}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"zip":"78242"}'`;
+
+  const curlAni = `curl -X POST '${url}' \\
+  -H 'Authorization: Bearer ${bearer}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"caller_id":"2105550100"}'`;
+
+  function copy(text: string) {
+    void navigator.clipboard.writeText(text);
+    toast.success('Copied');
+  }
+
+  return (
+    <div className='space-y-4 rounded-md border p-4'>
+      <div>
+        <p className='text-sm font-medium'>How to use this API</p>
+        <p className='text-muted-foreground text-sm'>
+          Ringba (or any HTTP client) sends one lookup per call. Create a token above, then use it as
+          the Bearer token.
+        </p>
+      </div>
+
+      <dl className='grid grid-cols-1 gap-3 text-sm sm:grid-cols-2'>
+        <div>
+          <dt className='text-muted-foreground'>Method</dt>
+          <dd className='font-mono'>POST</dd>
+        </div>
+        <div className='min-w-0'>
+          <dt className='text-muted-foreground'>URL</dt>
+          <dd className='font-mono break-all'>{url}</dd>
+        </div>
+        <div className='sm:col-span-2'>
+          <dt className='text-muted-foreground'>Header</dt>
+          <dd className='font-mono break-all'>Authorization: Bearer {bearer}</dd>
+        </div>
+        <div>
+          <dt className='text-muted-foreground'>Content-Type</dt>
+          <dd className='font-mono'>application/json</dd>
+        </div>
+        <div>
+          <dt className='text-muted-foreground'>Match order</dt>
+          <dd>PIN first, then caller ID, then ZIP</dd>
+        </div>
+      </dl>
+
+      <div className='space-y-2 text-sm'>
+        <p className='font-medium'>JSON body — send one of these</p>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs'>{`{
+  "pin": "ABC123"
+}`}</pre>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs'>{`{
+  "zip": "78242"
+}`}</pre>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs'>{`{
+  "caller_id": "2105550100"
+}`}</pre>
+        <p className='text-muted-foreground text-xs'>
+          Also accepted: <code>PIN</code>, <code>pin_code</code>, <code>ANI</code>, <code>phone</code>,{' '}
+          <code>postal_code</code>. Optional <code>call_id</code> is stored on the lookup log.
+        </p>
+      </div>
+
+      <div className='space-y-2 text-sm'>
+        <div className='flex items-center justify-between gap-2'>
+          <p className='font-medium'>cURL — lookup by PIN</p>
+          <Button type='button' size='sm' variant='outline' onClick={() => copy(curlPin)}>
+            Copy
+          </Button>
+        </div>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs whitespace-pre'>{curlPin}</pre>
+        <p className='font-medium'>ZIP</p>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs whitespace-pre'>{curlZip}</pre>
+        <p className='font-medium'>Caller ID</p>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs whitespace-pre'>{curlAni}</pre>
+      </div>
+
+      <div className='space-y-2 text-sm'>
+        <p className='font-medium'>Success response</p>
+        <pre className='bg-muted overflow-x-auto rounded-md p-3 text-xs'>{`{
+  "match_method": "pin",
+  "match_count": 1,
+  "record_id": 12,
+  "piece_id": 8,
+  "pin": "ABC123",
+  "vertical": "medicare",
+  "state": "TX",
+  "zip": "78242",
+  "city": "San Antonio",
+  "age": 67,
+  "age_band": "65-69",
+  "homeowner_status": "owner",
+  "attributes": { "mail_code": "A1" }
+}`}</pre>
+        <p className='text-muted-foreground text-xs'>
+          <code>match_method</code> is <code>pin</code>, <code>ani</code>, <code>zip</code>, or{' '}
+          <code>unmatched</code>. Name and street address are never returned. HTTP 401 = bad token, 503
+          = no API created yet.
+        </p>
+      </div>
+
+      <div className='space-y-1 text-sm'>
+        <p className='font-medium'>Ringba</p>
+        <p className='text-muted-foreground'>
+          HTTP request URL: <span className='font-mono text-foreground'>{url}</span>
+          <br />
+          Method: POST. Header Authorization = Bearer and your token. Body JSON with the PIN (or ZIP /
+          ANI) field Ringba collected on the call.
+        </p>
+      </div>
+    </div>
   );
 }
