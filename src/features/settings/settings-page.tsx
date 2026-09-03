@@ -9,7 +9,9 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/features/auth/auth-context';
 import { supabase } from '@/lib/supabase/client';
 import {
+  createExtraColumnFn,
   createLookupApiKeyFn,
+  deleteExtraColumnFn,
   fetchLookupApiKeys,
   revokeLookupApiKeyFn
 } from '@/features/list-management/api/server';
@@ -276,7 +278,10 @@ function PortalCard() {
           </div>
 
           <div className='space-y-3'>
-            <p className='text-sm font-medium'>Extra columns</p>
+            <p className='text-sm font-medium'>Database columns (custom)</p>
+            <p className='text-muted-foreground text-xs'>
+              Creates a column in the database for list uploads and record editing.
+            </p>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
               <Input
                 placeholder='column key'
@@ -294,20 +299,25 @@ function PortalCard() {
                 disabled={save.isPending}
                 onClick={() => {
                   const key = slugifyColumnKey(colKey);
-                  if (!key) return;
-                  if (saved.extra_columns.some((c) => c.key === key)) return;
-                  persist({
-                    extra_columns: [...saved.extra_columns, { key, default_value: colDefault }]
-                  });
-                  setColKey('');
-                  setColDefault('');
+                  if (!key) {
+                    toast.error('Enter a valid column name');
+                    return;
+                  }
+                  void createExtraColumnFn({ data: { key, default_value: colDefault } })
+                    .then(() => {
+                      setColKey('');
+                      setColDefault('');
+                      toast.success(`Created database column “${key}”`);
+                      void query.refetch();
+                    })
+                    .catch((err: Error) => toast.error(err.message));
                 }}
               >
-                Add
+                Create
               </Button>
             </div>
             {saved.extra_columns.length === 0 ? (
-              <p className='text-muted-foreground text-sm'>Optional fields added on every upload.</p>
+              <p className='text-muted-foreground text-sm'>No custom database columns yet.</p>
             ) : (
               <ul className='space-y-2'>
                 {saved.extra_columns.map((c) => (
@@ -316,7 +326,7 @@ function PortalCard() {
                     className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
                   >
                     <span className='truncate'>
-                      {c.key}
+                      Database · {c.key}
                       {c.default_value ? (
                         <span className='text-muted-foreground'> · {c.default_value}</span>
                       ) : null}
@@ -325,9 +335,14 @@ function PortalCard() {
                       type='button'
                       variant='ghost'
                       size='sm'
-                      onClick={() =>
-                        persist({ extra_columns: saved.extra_columns.filter((x) => x.key !== c.key) })
-                      }
+                      onClick={() => {
+                        void deleteExtraColumnFn({ data: { key: c.key } })
+                          .then(() => {
+                            toast.success(`Removed “${c.key}”`);
+                            void query.refetch();
+                          })
+                          .catch((err: Error) => toast.error(err.message));
+                      }}
                     >
                       Remove
                     </Button>

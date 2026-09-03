@@ -14,6 +14,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  createExtraColumnFn,
+  deleteExtraColumnFn,
   deleteRecordsFn,
   getListUploadOptions,
   updatePortalSettings,
@@ -30,8 +32,9 @@ import type {
 } from '@/features/list-management/api/types';
 import {
   applyMapping,
-  FIELD_LABELS,
+  DATABASE_FIELDS,
   formatPinDisplay,
+  getMappingOptions,
   guessMapping,
   parseDelimited
 } from '@/features/list-management/lib/csv';
@@ -39,7 +42,8 @@ import {
   CORE_COLUMNS,
   DEFAULT_VISIBLE_COLUMNS,
   attrColumnId,
-  isColumnVisible
+  isColumnVisible,
+  slugifyColumnKey
 } from '@/features/list-management/lib/columns';
 import {
   DropdownMenu,
@@ -177,6 +181,9 @@ export function ListUploadPage() {
   }, [optionsQuery.data?.settings]);
 
   const mapped = applyMapping(rawRows, mapping);
+  const pendingNewColumns = mapped.newExtraKeys.filter(
+    (k) => !settings.extra_columns.some((c) => c.key === k)
+  );
 
   const uploadMutation = useMutation({
     mutationFn: (input: Parameters<typeof uploadMailingList>[0]['data']) =>
@@ -248,44 +255,61 @@ export function ListUploadPage() {
     onError: (err: Error) => toast.error(err.message)
   });
 
+  const createColumn = useMutation({
+    mutationFn: (input: { key: string; default_value?: string }) =>
+      createExtraColumnFn({ data: input }),
+    onSuccess: (_saved, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ['portal-settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
+      const key = slugifyColumnKey(vars.key) || vars.key.trim().toLowerCase();
+      setNewCol('');
+      setNewColValue('');
+      toast.success(`Created database column “${key}”`);
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
+  const removeColumn = useMutation({
+    mutationFn: (key: string) => deleteExtraColumnFn({ data: { key } }),
+    onSuccess: (_saved, key) => {
+      void queryClient.invalidateQueries({ queryKey: ['portal-settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
+      // Only remaps uploaded headers that targeted this DB column — does not remove upload columns.
+      setMapping((m) => {
+        const next = { ...m };
+        for (const [header, field] of Object.entries(next)) {
+          if (field === attrColumnId(key)) next[header] = 'attrs';
+        }
+        return next;
+      });
+      toast.success(`Removed database column “${key}”`);
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
+
   async function onFile(file: File | null) {
     if (!file) return;
     setFileName(file.name);
     const parsed = await fileToRows(file);
-    let nextHeaders = [...parsed.headers];
-    let nextRows = parsed.rows;
-    for (const col of settings.extra_columns) {
-      if (!nextHeaders.includes(col.key)) {
-        nextHeaders.push(col.key);
-        nextRows = nextRows.map((r) => ({ ...r, [col.key]: col.default_value }));
-      }
-    }
-    setHeaders(nextHeaders);
-    setRawRows(nextRows);
-    const guessed = guessMapping(nextHeaders);
-    for (const col of settings.extra_columns) {
-      if (!guessed[col.key]) guessed[col.key] = 'attrs';
-    }
-    setMapping(guessed);
+    // Uploaded side = file headers only. Database columns stay on the database side.
+    setHeaders(parsed.headers);
+    setRawRows(parsed.rows);
+    setMapping(guessMapping(parsed.headers, settings.extra_columns));
   }
 
   function addColumn() {
-    const name = newCol.trim();
-    if (!name) {
+    const label = newCol.trim();
+    if (!label) {
       toast.error('Enter a column name');
       return;
     }
-    if (headers.includes(name)) {
-      toast.error('That column already exists');
-      return;
-    }
-    setHeaders((h) => [...h, name]);
-    setMapping((m) => ({ ...m, [name]: 'attrs' }));
-    setRawRows((rows) => rows.map((r) => ({ ...r, [name]: newColValue })));
-    setNewCol('');
-    setNewColValue('');
-    toast.success(`Added column “${name}”`);
+    createColumn.mutate({ key: label, default_value: newColValue });
   }
+
+  const mappingOptions = React.useMemo(
+    () => getMappingOptions(settings.extra_columns),
+    [settings.extra_columns]
+  );
 
   const recent = optionsQuery.data?.recentPins ?? [];
   const attrKeys = React.useMemo(() => {
@@ -349,8 +373,8 @@ export function ListUploadPage() {
         <CardHeader>
           <CardTitle>Upload CSV or Excel</CardTitle>
           <CardDescription>
-            Map PIN (this file uses key_code). Extra columns are stored automatically. Choose a vertical
-            from Settings.
+            Match each uploaded column to a database column. You can also create new database columns
+            before or during upload.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-4'>
@@ -397,61 +421,129 @@ export function ListUploadPage() {
             <Input id='list-source' value={listSource} onChange={(e) => setListSource(e.target.value)} />
           </div>
 
+          <div className='space-y-3 rounded-lg border p-4'>
+            <div>
+              <Label>Database columns</Label>
+              <p className='text-muted-foreground text-sm'>
+                Built-in fields plus any custom columns saved in the database.
+              </p>
+            </div>
+            <div className='max-h-36 overflow-auto rounded-md border bg-muted/30 p-3'>
+              <ul className='grid gap-1.5 text-sm sm:grid-cols-2'>
+                {DATABASE_FIELDS.map((f) => (
+                  <li key={f.value} className='flex flex-col'>
+                    <span className='font-medium'>Database · {f.label}</span>
+                    <span className='text-muted-foreground text-xs'>{f.hint}</span>
+                  </li>
+                ))}
+                {settings.extra_columns.map((c) => (
+                  <li key={c.key} className='flex items-start justify-between gap-2'>
+                    <div className='min-w-0 flex flex-col'>
+                      <span className='font-medium'>Database · {c.key}</span>
+                      <span className='text-muted-foreground text-xs'>
+                        Custom column
+                        {c.default_value ? ` · default “${c.default_value}”` : ''}
+                      </span>
+                    </div>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      className='shrink-0'
+                      disabled={removeColumn.isPending}
+                      onClick={() => removeColumn.mutate(c.key)}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
+              <div className='space-y-2'>
+                <Label htmlFor='new-col'>Create database column</Label>
+                <Input
+                  id='new-col'
+                  placeholder='e.g. lead_score'
+                  value={newCol}
+                  onChange={(e) => setNewCol(e.target.value)}
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='new-col-val'>Default value</Label>
+                <Input
+                  id='new-col-val'
+                  placeholder='optional'
+                  value={newColValue}
+                  onChange={(e) => setNewColValue(e.target.value)}
+                />
+              </div>
+              <div className='flex items-end'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  disabled={createColumn.isPending}
+                  onClick={addColumn}
+                >
+                  {createColumn.isPending ? 'Creating…' : 'Create in database'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           {headers.length > 0 && (
-            <div className='space-y-2'>
-              <Label>Column mapping</Label>
-              <div className='max-h-64 space-y-2 overflow-auto'>
+            <div className='space-y-3'>
+              <div>
+                <Label>Map uploaded columns → database</Label>
+                <p className='text-muted-foreground text-sm'>
+                  Left: columns from your file. Right: database column to store them in.
+                </p>
+              </div>
+              <div className='max-h-80 space-y-2 overflow-auto rounded-lg border p-3'>
+                <div className='text-muted-foreground grid grid-cols-1 gap-2 text-xs font-semibold tracking-wide uppercase sm:grid-cols-2'>
+                  <span>Uploaded column</span>
+                  <span>Database column</span>
+                </div>
                 {headers.map((h) => (
                   <div key={h} className='grid grid-cols-1 items-center gap-2 sm:grid-cols-2'>
-                    <span className='truncate text-sm'>{h}</span>
-                    <select
-                      className='border-input bg-background h-9 rounded-md border px-2 text-sm'
-                      value={mapping[h] ?? 'attrs'}
-                      onChange={(e) =>
-                        setMapping((m) => ({ ...m, [h]: e.target.value as MappedField }))
-                      }
-                    >
-                      {FIELD_LABELS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className='min-w-0 rounded-md border bg-muted/40 px-3 py-2'>
+                      <p className='text-muted-foreground text-[10px] font-semibold tracking-wide uppercase'>
+                        Uploaded
+                      </p>
+                      <p className='truncate text-sm font-medium' title={h}>
+                        {h}
+                      </p>
+                    </div>
+                    <div className='min-w-0'>
+                      <p className='text-muted-foreground mb-1 text-[10px] font-semibold tracking-wide uppercase sm:hidden'>
+                        Database
+                      </p>
+                      <select
+                        className='border-input bg-background h-10 w-full rounded-md border px-2 text-sm'
+                        value={mapping[h] ?? 'attrs'}
+                        onChange={(e) =>
+                          setMapping((m) => ({ ...m, [h]: e.target.value as MappedField }))
+                        }
+                      >
+                        {mappingOptions.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 ))}
               </div>
               <p className='text-muted-foreground text-sm'>
                 {mapped.records.length} rows will be saved
                 {mapped.skippedNoPin ? ` · ${mapped.skippedNoPin} without PIN` : ''}
+                {pendingNewColumns.length
+                  ? ` · ${pendingNewColumns.length} new database column(s) will be created`
+                  : ''}
               </p>
             </div>
           )}
-
-          <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
-            <div className='space-y-2'>
-              <Label htmlFor='new-col'>New column</Label>
-              <Input
-                id='new-col'
-                placeholder='e.g. lead_source'
-                value={newCol}
-                onChange={(e) => setNewCol(e.target.value)}
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='new-col-val'>Default value</Label>
-              <Input
-                id='new-col-val'
-                placeholder='optional'
-                value={newColValue}
-                onChange={(e) => setNewColValue(e.target.value)}
-              />
-            </div>
-            <div className='flex items-end'>
-              <Button type='button' variant='outline' onClick={addColumn}>
-                Add column
-              </Button>
-            </div>
-          </div>
 
           <Button
             type='button'
@@ -460,7 +552,8 @@ export function ListUploadPage() {
               uploadMutation.mutate({
                 records: mapped.records,
                 listSource,
-                vertical: vertical.trim() || null
+                vertical: vertical.trim() || null,
+                registerExtraKeys: pendingNewColumns
               })
             }
           >

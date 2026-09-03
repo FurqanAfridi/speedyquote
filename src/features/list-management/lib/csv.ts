@@ -1,20 +1,47 @@
-import type { ColumnMapping, ListRecordInput, MappedField } from '../api/types';
+import type { ColumnMapping, ListRecordInput, MappedField, PortalExtraColumn } from '../api/types';
+import { attrColumnId, slugifyColumnKey } from './columns';
 
-export const FIELD_LABELS: { value: MappedField; label: string }[] = [
-  { value: 'pin', label: 'PIN (lookup)' },
-  { value: 'known_phone', label: 'Phone / caller ID (lookup)' },
-  { value: 'zip', label: 'ZIP (lookup)' },
-  { value: 'first_name', label: 'First name' },
-  { value: 'last_name', label: 'Last name' },
-  { value: 'address1', label: 'Address' },
-  { value: 'address2', label: 'Address 2' },
-  { value: 'city', label: 'City' },
-  { value: 'state', label: 'State' },
-  { value: 'age', label: 'Age' },
-  { value: 'homeowner_status', label: 'Homeowner' },
-  { value: 'attrs', label: 'Keep as extra attribute' },
-  { value: 'ignore', label: 'Skip' }
+/** Every database field clients can map a file column onto. */
+export const DATABASE_FIELDS: { value: Exclude<MappedField, 'attrs' | 'ignore'>; label: string; hint: string }[] = [
+  { value: 'pin', label: 'PIN', hint: 'mail_pieces.pin_code · lookup key' },
+  { value: 'first_name', label: 'First name', hint: 'records.first_name' },
+  { value: 'last_name', label: 'Last name', hint: 'records.last_name' },
+  { value: 'address1', label: 'Address', hint: 'records.address1' },
+  { value: 'address2', label: 'Address 2', hint: 'records.address2' },
+  { value: 'city', label: 'City', hint: 'records.city' },
+  { value: 'state', label: 'State', hint: 'records.state' },
+  { value: 'zip', label: 'ZIP', hint: 'records.zip · lookup' },
+  { value: 'zip4', label: 'ZIP+4', hint: 'records.zip4' },
+  { value: 'age', label: 'Age', hint: 'records.age' },
+  { value: 'homeowner_status', label: 'Homeowner', hint: 'records.homeowner_status' },
+  { value: 'known_phone', label: 'Phone / ANI', hint: 'records.known_phone · lookup' },
+  { value: 'list_source', label: 'List source', hint: 'records.list_source' },
+  { value: 'vertical', label: 'Vertical', hint: 'records.vertical' }
 ];
+
+/** @deprecated use getMappingOptions — kept for any old imports */
+export const FIELD_LABELS = [
+  ...DATABASE_FIELDS.map((f) => ({ value: f.value as MappedField, label: `${f.label} (${f.hint.split(' · ')[0]})` })),
+  { value: 'attrs' as MappedField, label: 'New extra column (use file header name)' },
+  { value: 'ignore' as MappedField, label: 'Skip' }
+];
+
+export function getMappingOptions(extraColumns: PortalExtraColumn[]): { value: string; label: string }[] {
+  const core = DATABASE_FIELDS.map((f) => ({
+    value: f.value,
+    label: `Database · ${f.label}`
+  }));
+  const extras = extraColumns.map((c) => ({
+    value: attrColumnId(c.key),
+    label: `Database · ${c.key}`
+  }));
+  return [
+    ...core,
+    ...extras,
+    { value: 'attrs', label: 'Database · create new column from upload header' },
+    { value: 'ignore', label: 'Skip — do not import' }
+  ];
+}
 
 const HEADER_TO_FIELD: Record<string, MappedField> = {
   pin: 'pin',
@@ -42,6 +69,9 @@ const HEADER_TO_FIELD: Record<string, MappedField> = {
   zip_code: 'zip',
   postal: 'zip',
   postal_code: 'zip',
+  zip4: 'zip4',
+  zip_4: 'zip4',
+  plus4: 'zip4',
   age: 'age',
   homeowner_status: 'homeowner_status',
   homeowner: 'homeowner_status',
@@ -52,7 +82,11 @@ const HEADER_TO_FIELD: Record<string, MappedField> = {
   phonenumber: 'known_phone',
   phone_number: 'known_phone',
   caller_id: 'known_phone',
-  ani: 'known_phone'
+  ani: 'known_phone',
+  list_source: 'list_source',
+  listsource: 'list_source',
+  source: 'list_source',
+  vertical: 'vertical'
 };
 
 export function normalizeHeader(h: string): string {
@@ -105,10 +139,22 @@ export function parseDelimited(text: string): { headers: string[]; rows: Record<
   return { headers, rows };
 }
 
-export function guessMapping(headers: string[]): ColumnMapping {
+export function guessMapping(headers: string[], extraColumns: PortalExtraColumn[] = []): ColumnMapping {
   const mapping: ColumnMapping = {};
+  const extraByNorm = new Map(extraColumns.map((c) => [normalizeHeader(c.key), c.key]));
   for (const h of headers) {
-    mapping[h] = HEADER_TO_FIELD[normalizeHeader(h)] ?? 'attrs';
+    const norm = normalizeHeader(h);
+    const core = HEADER_TO_FIELD[norm];
+    if (core) {
+      mapping[h] = core;
+      continue;
+    }
+    const extraKey = extraByNorm.get(norm) ?? (extraColumns.some((c) => c.key === h) ? h : null);
+    if (extraKey) {
+      mapping[h] = attrColumnId(extraKey);
+      continue;
+    }
+    mapping[h] = 'attrs';
   }
   return mapping;
 }
@@ -121,13 +167,43 @@ function parseHomeowner(value: string | undefined): string | null {
   return value.trim();
 }
 
+function isAttrTarget(field: string): field is `attr:${string}` | 'attrs' {
+  return field === 'attrs' || field.startsWith('attr:');
+}
+
+function attrKeyFromTarget(header: string, field: string): string {
+  if (field.startsWith('attr:')) {
+    const key = field.slice(5).trim();
+    return key || slugifyColumnKey(header) || header;
+  }
+  return slugifyColumnKey(header) || header.trim();
+}
+
+/** Attr keys that should be registered as portal extra columns after this mapping. */
+export function collectNewExtraKeys(mapping: ColumnMapping, existing: PortalExtraColumn[]): string[] {
+  const have = new Set(existing.map((c) => c.key));
+  const keys = new Set<string>();
+  for (const [header, field] of Object.entries(mapping)) {
+    if (!isAttrTarget(field) || field === 'ignore') continue;
+    const key = attrKeyFromTarget(header, field);
+    if (key && !have.has(key)) keys.add(key);
+  }
+  return [...keys];
+}
+
 export function applyMapping(
   rows: Record<string, string>[],
   mapping: ColumnMapping
-): { records: ListRecordInput[]; skippedNoPin: number } {
+): { records: ListRecordInput[]; skippedNoPin: number; newExtraKeys: string[] } {
   const records: ListRecordInput[] = [];
   let skippedNoPin = 0;
-  const extraHeaders = Object.keys(mapping).filter((h) => mapping[h] === 'attrs');
+  const newExtraKeys = new Set<string>();
+
+  for (const [header, field] of Object.entries(mapping)) {
+    if (field === 'ignore') continue;
+    if (!isAttrTarget(field)) continue;
+    newExtraKeys.add(attrKeyFromTarget(header, field));
+  }
 
   for (const row of rows) {
     const get = (field: MappedField) => {
@@ -142,11 +218,15 @@ export function applyMapping(
     const parsedAge = ageRaw ? Number.parseInt(ageRaw, 10) : null;
     const age = parsedAge != null && Number.isFinite(parsedAge) ? parsedAge : null;
     const zipDigits = (get('zip') ?? '').replace(/\D/g, '');
+    const zip4Raw = (get('zip4') ?? '').replace(/\D/g, '');
 
     const attrs: Record<string, string> = {};
-    for (const h of extraHeaders) {
-      const v = row[h]?.trim();
-      if (v) attrs[h] = v;
+    for (const [header, field] of Object.entries(mapping)) {
+      if (field === 'ignore') continue;
+      if (!isAttrTarget(field)) continue;
+      const key = attrKeyFromTarget(header, field);
+      const v = row[header]?.trim();
+      if (v) attrs[key] = v;
     }
     if (ageRaw && age == null) attrs.age = ageRaw;
 
@@ -159,15 +239,17 @@ export function applyMapping(
       city: get('city') || null,
       state: get('state') || null,
       zip: zipDigits.slice(0, 5) || get('zip') || null,
-      zip4: zipDigits.slice(5, 9) || null,
+      zip4: zip4Raw.slice(0, 4) || zipDigits.slice(5, 9) || null,
       age,
       homeowner_status: parseHomeowner(get('homeowner_status')),
       known_phone: get('known_phone') || null,
+      list_source: get('list_source') || null,
+      vertical: get('vertical') || null,
       attrs
     });
   }
 
-  return { records, skippedNoPin };
+  return { records, skippedNoPin, newExtraKeys: [...newExtraKeys] };
 }
 
 export function ageBandFromAge(age: number | null | undefined): string | null {

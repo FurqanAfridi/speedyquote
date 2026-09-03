@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ageBandFromAge } from '../lib/csv';
+import { attrColumnId, DEFAULT_VISIBLE_COLUMNS, slugifyColumnKey } from '../lib/columns';
 import type {
   ListRecordInput,
   PortalSettings,
@@ -9,6 +10,41 @@ import type {
   UploadedPiece
 } from './types';
 import { DEFAULT_PORTAL_SETTINGS } from './types';
+
+const RESERVED_COLUMN_KEYS = new Set([
+  'pin',
+  'first_name',
+  'last_name',
+  'address1',
+  'address2',
+  'city',
+  'state',
+  'zip',
+  'zip4',
+  'age',
+  'age_band',
+  'homeowner_status',
+  'known_phone',
+  'list_source',
+  'vertical',
+  'attrs',
+  'record_id',
+  'name',
+  'phone',
+  'homeowner',
+  'ignore'
+]);
+
+function normalizeExtraColumnKey(raw: string) {
+  const key = slugifyColumnKey(raw);
+  if (!key || !/^[a-z][a-z0-9_]*$/.test(key)) {
+    throw new Error('Column names must start with a letter and use only letters, numbers, and underscores');
+  }
+  if (RESERVED_COLUMN_KEYS.has(key)) {
+    throw new Error(`“${key}” is a built-in database column`);
+  }
+  return key;
+}
 
 function asAttrs(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -155,6 +191,81 @@ export async function savePortalSettings(input: PortalSettings): Promise<PortalS
   return parseSettings(data as Record<string, unknown>);
 }
 
+/** Create a custom column in portal_settings (+ seed records.attrs). */
+export async function createExtraColumn(input: {
+  key: string;
+  default_value?: string;
+}): Promise<PortalSettings> {
+  const key = normalizeExtraColumnKey(input.key);
+  const default_value = input.default_value?.trim() ?? '';
+  const admin = createAdminClient();
+
+  const { data: rpcCols, error: rpcError } = await admin.rpc('register_record_extra_column', {
+    p_key: key,
+    p_default: default_value
+  });
+
+  if (!rpcError && rpcCols != null) {
+    return getPortalSettings();
+  }
+
+  // Fallback when the SQL function has not been applied yet.
+  if (rpcError && !/does not exist|function/i.test(rpcError.message)) {
+    throw settingsError(rpcError.message);
+  }
+
+  const settings = await getPortalSettings();
+  if (settings.extra_columns.some((c) => c.key === key)) {
+    throw new Error(`Column “${key}” already exists`);
+  }
+
+  const nextVisible = settings.visible_columns.length
+    ? [...new Set([...settings.visible_columns, attrColumnId(key)])]
+    : [...DEFAULT_VISIBLE_COLUMNS, attrColumnId(key)];
+
+  const saved = await savePortalSettings({
+    ...settings,
+    extra_columns: [...settings.extra_columns, { key, default_value }],
+    visible_columns: nextVisible
+  });
+
+  // Seed attrs on existing rows so the column is present in the database.
+  const { data: rows, error: listError } = await admin
+    .from('records')
+    .select('record_id, attrs')
+    .limit(10000);
+  if (listError) throw new Error(listError.message);
+
+  for (const row of rows ?? []) {
+    const raw =
+      row.attrs && typeof row.attrs === 'object' && !Array.isArray(row.attrs)
+        ? { ...(row.attrs as Record<string, unknown>) }
+        : {};
+    if (Object.prototype.hasOwnProperty.call(raw, key) && String(raw[key] ?? '') !== '') continue;
+    if (Object.prototype.hasOwnProperty.call(raw, key) && !default_value) continue;
+    raw[key] = default_value;
+    const { error: updError } = await admin
+      .from('records')
+      .update({ attrs: raw, updated_at: new Date().toISOString() })
+      .eq('record_id', row.record_id);
+    if (updError) throw new Error(updError.message);
+  }
+
+  return saved;
+}
+
+export async function deleteExtraColumn(keyRaw: string): Promise<PortalSettings> {
+  const key = slugifyColumnKey(keyRaw) || keyRaw.trim();
+  if (!key) throw new Error('Column key required');
+  const settings = await getPortalSettings();
+  const next: PortalSettings = {
+    ...settings,
+    extra_columns: settings.extra_columns.filter((c) => c.key !== key),
+    visible_columns: settings.visible_columns.filter((id) => id !== attrColumnId(key))
+  };
+  return savePortalSettings(next);
+}
+
 function countBy(values: Array<string | null | undefined>) {
   const map = new Map<string, number>();
   for (const v of values) {
@@ -173,11 +284,38 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
   const admin = createAdminClient();
   let skippedNoPin = 0;
 
-  let extraColumns: { key: string; default_value: string }[] = [];
+  let settings: Awaited<ReturnType<typeof getPortalSettings>> | null = null;
   try {
-    extraColumns = (await getPortalSettings()).extra_columns;
+    settings = await getPortalSettings();
   } catch {
-    extraColumns = [];
+    settings = null;
+  }
+  let extraColumns = settings?.extra_columns ?? [];
+
+  const registerKeys = [
+    ...new Set([
+      ...(input.registerExtraKeys ?? []),
+      ...input.records.flatMap((r) => Object.keys(r.attrs ?? {}))
+    ])
+  ].filter(Boolean);
+  const have = new Set(extraColumns.map((c) => c.key));
+  for (const key of registerKeys) {
+    if (have.has(key)) continue;
+    try {
+      settings = await createExtraColumn({ key, default_value: '' });
+      extraColumns = settings.extra_columns;
+      have.add(key);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (/already exists/i.test(message) || /built-in/i.test(message)) {
+        have.add(key);
+        continue;
+      }
+      if (!settings) throw err;
+    }
+  }
+  if (settings) {
+    extraColumns = settings.extra_columns;
   }
 
   const prepared = input.records.map((row: ListRecordInput) => {

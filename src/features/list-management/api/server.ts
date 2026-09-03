@@ -7,6 +7,8 @@ import {
   revokeLookupApiKey
 } from './keys';
 import {
+  createExtraColumn,
+  deleteExtraColumn,
   deleteRecords,
   getOverviewStats,
   getPortalSettings,
@@ -46,6 +48,20 @@ export const updatePortalSettings = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await gate();
     return savePortalSettings(data);
+  });
+
+export const createExtraColumnFn = createServerFn({ method: 'POST' })
+  .validator((data: { key: string; default_value?: string }) => data)
+  .handler(async ({ data }) => {
+    await gate();
+    return createExtraColumn(data);
+  });
+
+export const deleteExtraColumnFn = createServerFn({ method: 'POST' })
+  .validator((data: { key: string }) => data)
+  .handler(async ({ data }) => {
+    await gate();
+    return deleteExtraColumn(data.key);
   });
 
 export const fetchOverview = createServerFn({ method: 'GET' }).handler(async () => {

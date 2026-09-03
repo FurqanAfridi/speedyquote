@@ -7,13 +7,17 @@ export type MappedField =
   | 'city'
   | 'state'
   | 'zip'
+  | 'zip4'
   | 'age'
   | 'homeowner_status'
   | 'known_phone'
+  | 'list_source'
+  | 'vertical'
   | 'attrs'
-  | 'ignore';
+  | 'ignore'
+  | `attr:${string}`;
 
-export type ColumnMapping = Record<string, MappedField>;
+export type ColumnMapping = Record<string, MappedField | string>;
 
 export type ListRecordInput = {
   pin: string;
@@ -37,6 +41,8 @@ export type UploadListInput = {
   records: ListRecordInput[];
   listSource?: string | null;
   vertical?: string | null;
+  /** Extra column keys to register in portal_settings when missing. */
+  registerExtraKeys?: string[];
 };
 
 export type UploadedPiece = {
