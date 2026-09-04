@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { testPinLookupFn } from '@/features/list-management/api/server';
 
 export function LookupTester({ initialPin = '' }: { initialPin?: string }) {
+  const queryClient = useQueryClient();
   const [testPin, setTestPin] = React.useState(initialPin);
   const [testZip, setTestZip] = React.useState('');
   const [testAni, setTestAni] = React.useState('');
@@ -21,6 +22,7 @@ export function LookupTester({ initialPin = '' }: { initialPin?: string }) {
       testPinLookupFn({ data: input }),
     onSuccess: (body) => {
       setTestResult(JSON.stringify(body, null, 2));
+      void queryClient.invalidateQueries({ queryKey: ['lookup-logs'] });
       toast.success(body.match_method === 'unmatched' ? 'No match found' : `Found a match (${body.match_method})`);
     },
     onError: (err: Error) => toast.error(err.message)

@@ -4,11 +4,12 @@ export const CORE_COLUMNS = [
   { id: 'name', label: 'Name' },
   { id: 'address1', label: 'Address' },
   { id: 'city', label: 'City' },
-  { id: 'state', label: 'State' },
-  { id: 'zip', label: 'ZIP' },
+  { id: 'addressState_X', label: 'addressState_X' },
+  { id: 'addressZip_X', label: 'addressZip_X' },
+  { id: 'creative_X', label: 'creative_X' },
   { id: 'phone', label: 'Phone' },
-  { id: 'homeowner', label: 'Homeowner' },
-  { id: 'age', label: 'Age' }
+  { id: 'homeowner', label: 'homeowner' },
+  { id: 'age', label: 'age' }
 ] as const;
 
 export type CoreColumnId = (typeof CORE_COLUMNS)[number]['id'];

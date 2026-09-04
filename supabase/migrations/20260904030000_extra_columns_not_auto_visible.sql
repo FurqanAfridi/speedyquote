@@ -22,8 +22,9 @@ begin
 
   if v_key in (
     'pin', 'first_name', 'last_name', 'address1', 'address2', 'city', 'state', 'zip', 'zip4',
-    'age', 'age_band', 'homeowner_status', 'known_phone', 'list_source', 'vertical', 'attrs',
-    'record_id', 'name', 'phone', 'homeowner', 'ignore'
+    'address_state', 'address_zip', 'addressstate', 'addresszip', 'creative',
+    'age', 'age_band', 'homeowner_status', 'homeowner', 'known_phone', 'list_source', 'vertical', 'attrs',
+    'record_id', 'name', 'phone', 'ignore'
   ) then
     raise exception 'Column key is reserved for a built-in field';
   end if;

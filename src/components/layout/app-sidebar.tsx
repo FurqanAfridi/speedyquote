@@ -42,7 +42,7 @@ export default function AppSidebar() {
   const settingsQuery = useQuery({
     queryKey: ['portal-settings'],
     queryFn: () => fetchPortalSettings().catch(() => null),
-    staleTime: 60_000
+    staleTime: 5 * 60_000
   });
   const orgName = settingsQuery.data?.org_name || siteConfig.shortName;
 

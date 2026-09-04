@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LookupTester } from '@/features/list-management/components/lookup-tester';
-import { getListUploadOptions } from '@/features/list-management/api/server';
+import { getLookupLogsPage } from '@/features/list-management/api/server';
 
 export const Route = createFileRoute('/dashboard/pin-diagnostics')({
   head: () => ({ meta: [{ title: 'Lookups · Speedy Quote' }] }),
@@ -16,8 +16,9 @@ export const Route = createFileRoute('/dashboard/pin-diagnostics')({
 function ApiHitsPage() {
   const [testOpen, setTestOpen] = React.useState(false);
   const query = useQuery({
-    queryKey: ['list-upload-options'],
-    queryFn: () => getListUploadOptions()
+    queryKey: ['lookup-logs'],
+    queryFn: () => getLookupLogsPage(),
+    staleTime: 60_000
   });
 
   const logs = query.data?.logs ?? [];

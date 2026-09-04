@@ -16,11 +16,13 @@ export const Route = createFileRoute('/dashboard/overview')({
 function OverviewPage() {
   const query = useQuery({
     queryKey: ['overview'],
-    queryFn: () => fetchOverview()
+    queryFn: () => fetchOverview(),
+    staleTime: 60_000
   });
   const settingsQuery = useQuery({
     queryKey: ['portal-settings'],
-    queryFn: () => fetchPortalSettings()
+    queryFn: () => fetchPortalSettings(),
+    staleTime: 5 * 60_000
   });
 
   const d = query.data;

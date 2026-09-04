@@ -5,11 +5,11 @@ export type MappedField =
   | 'address1'
   | 'address2'
   | 'city'
-  | 'state'
-  | 'zip'
-  | 'zip4'
+  | 'addressState_X'
+  | 'addressZip_X'
+  | 'creative_X'
   | 'age'
-  | 'homeowner_status'
+  | 'homeowner'
   | 'known_phone'
   | 'list_source'
   | 'vertical'
@@ -26,11 +26,11 @@ export type ListRecordInput = {
   address1?: string | null;
   address2?: string | null;
   city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-  zip4?: string | null;
+  addressState_X?: string | null;
+  addressZip_X?: string | null;
+  creative_X?: string | null;
   age?: number | null;
-  homeowner_status?: string | null;
+  homeowner?: string | null;
   known_phone?: string | null;
   list_source?: string | null;
   vertical?: string | null;
@@ -56,11 +56,11 @@ export type UploadedPiece = {
   last_name: string | null;
   address1: string | null;
   city: string | null;
-  state: string | null;
-  zip: string | null;
-  zip4: string | null;
+  addressState_X: string | null;
+  addressZip_X: string | null;
+  creative_X: string | null;
   age: number | null;
-  homeowner_status: string | null;
+  homeowner: string | null;
   known_phone: string | null;
   vertical: string | null;
   list_source: string | null;
@@ -110,11 +110,11 @@ export type RecordMutationInput = {
   last_name?: string | null;
   address1?: string | null;
   city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-  zip4?: string | null;
+  addressState_X?: string | null;
+  addressZip_X?: string | null;
+  creative_X?: string | null;
   age?: number | null;
-  homeowner_status?: string | null;
+  homeowner?: string | null;
   known_phone?: string | null;
   list_source?: string | null;
   vertical?: string | null;

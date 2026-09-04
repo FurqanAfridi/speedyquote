@@ -1,4 +1,26 @@
--- Register custom list columns in portal_settings and optionally seed records.attrs.
+-- Lead / mail columns used by uploads and lookup API responses.
+-- Safe to paste into Supabase SQL editor (idempotent).
+
+alter table records add column if not exists address_state text;
+alter table records add column if not exists address_zip text;
+alter table records add column if not exists creative text;
+
+-- Already present on most installs; kept here so a fresh paste is complete.
+alter table records add column if not exists age smallint;
+alter table records add column if not exists homeowner_status text;
+
+-- Backfill address_* from classic state/zip when empty.
+update records
+set address_state = coalesce(nullif(trim(address_state), ''), nullif(trim(state::text), ''))
+where coalesce(nullif(trim(address_state), ''), '') = ''
+  and coalesce(nullif(trim(state::text), ''), '') <> '';
+
+update records
+set address_zip = coalesce(nullif(trim(address_zip), ''), nullif(trim(zip::text), ''))
+where coalesce(nullif(trim(address_zip), ''), '') = ''
+  and coalesce(nullif(trim(zip::text), ''), '') <> '';
+
+-- Keep register_record_extra_column reserved keys in sync with new built-ins.
 create or replace function register_record_extra_column(p_key text, p_default text default '')
 returns jsonb
 language plpgsql
@@ -24,8 +46,8 @@ begin
   if v_key in (
     'pin', 'first_name', 'last_name', 'address1', 'address2', 'city', 'state', 'zip', 'zip4',
     'address_state', 'address_zip', 'addressstate', 'addresszip', 'creative',
-    'age', 'age_band', 'homeowner_status', 'homeowner', 'known_phone', 'list_source', 'vertical', 'attrs',
-    'record_id', 'name', 'phone', 'ignore'
+    'age', 'age_band', 'homeowner_status', 'known_phone', 'list_source', 'vertical', 'attrs',
+    'record_id', 'name', 'phone', 'homeowner', 'ignore'
   ) then
     raise exception 'Column key is reserved for a built-in field';
   end if;
@@ -51,18 +73,12 @@ begin
     );
   end if;
 
-  if not (v_visible @> to_jsonb(array['attr:' || v_key])) then
-    -- Intentionally do not auto-add to visible_columns.
-    null;
-  end if;
-
   update portal_settings
   set
     extra_columns = v_cols,
     updated_at = now()
   where id = 1;
 
-  -- Seed the key onto existing rows so it shows up in the database immediately.
   if v_default <> '' then
     update records
     set
@@ -83,7 +99,3 @@ begin
   return (select extra_columns from portal_settings where id = 1);
 end;
 $$;
-
-revoke all on function register_record_extra_column(text, text) from public;
-grant execute on function register_record_extra_column(text, text) to service_role;
-grant execute on function register_record_extra_column(text, text) to authenticated;

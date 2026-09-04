@@ -227,8 +227,7 @@ function PortalCard() {
           {save.isPending ? 'Saving…' : 'Save list settings'}
         </Button>
 
-        <div className='grid gap-6 lg:grid-cols-2'>
-          <div className='space-y-3'>
+        <div className='space-y-3'>
             <p className='text-base font-medium'>Products / verticals</p>
             <div className='flex flex-col gap-2 sm:flex-row'>
               <Input
@@ -264,7 +263,6 @@ function PortalCard() {
                     <Button
                       type='button'
                       variant='ghost'
-                      size='sm'
                       onClick={() =>
                         persist({ verticals: saved.verticals.filter((x) => x.name !== v.name) })
                       }
@@ -277,80 +275,85 @@ function PortalCard() {
             )}
           </div>
 
-          <div className='space-y-3'>
-            <p className='text-sm font-medium'>Extra data columns</p>
-            <p className='text-muted-foreground text-xs'>
-              Fields kept from uploads that are not core database columns.
+        <div className='space-y-3 border-t pt-6'>
+          <div>
+            <p className='text-base font-medium'>Extra data columns</p>
+            <p className='text-muted-foreground mt-1 text-base'>
+              Every custom field kept from uploads or created here. All of them are listed below
+              ({saved.extra_columns.length}).
             </p>
-            <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
-              <Input
-                placeholder='column key'
-                value={colKey}
-                onChange={(e) => setColKey(e.target.value)}
-              />
-              <Input
-                placeholder='default'
-                value={colDefault}
-                onChange={(e) => setColDefault(e.target.value)}
-              />
-              <Button
-                type='button'
-                variant='outline'
-                disabled={save.isPending}
-                onClick={() => {
-                  const key = slugifyColumnKey(colKey);
-                  if (!key) {
-                    toast.error('Enter a valid column name');
-                    return;
-                  }
-                  void createExtraColumnFn({ data: { key, default_value: colDefault } })
-                    .then(() => {
-                      setColKey('');
-                      setColDefault('');
-                      toast.success(`Created extra data column “${key}”`);
-                      void query.refetch();
-                    })
-                    .catch((err: Error) => toast.error(err.message));
-                }}
-              >
-                Create
-              </Button>
-            </div>
-            {saved.extra_columns.length === 0 ? (
-              <p className='text-muted-foreground text-sm'>No extra data columns yet.</p>
-            ) : (
-              <ul className='space-y-2'>
-                {saved.extra_columns.map((c) => (
-                  <li
-                    key={c.key}
-                    className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
-                  >
-                    <span className='truncate'>
-                      Extra data · {c.key}
-                      {c.default_value ? (
-                        <span className='text-muted-foreground'> · {c.default_value}</span>
-                      ) : null}
-                    </span>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => {
-                        void deleteExtraColumnFn({ data: { key: c.key } })
-                          .then(() => {
-                            toast.success(`Removed “${c.key}”`);
-                            void query.refetch();
-                          })
-                          .catch((err: Error) => toast.error(err.message));
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
+          <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
+            <Input
+              placeholder='Column name'
+              value={colKey}
+              onChange={(e) => setColKey(e.target.value)}
+            />
+            <Input
+              placeholder='Default value (optional)'
+              value={colDefault}
+              onChange={(e) => setColDefault(e.target.value)}
+            />
+            <Button
+              type='button'
+              variant='outline'
+              disabled={save.isPending}
+              onClick={() => {
+                const key = slugifyColumnKey(colKey);
+                if (!key) {
+                  toast.error('Enter a valid column name');
+                  return;
+                }
+                void createExtraColumnFn({ data: { key, default_value: colDefault } })
+                  .then(() => {
+                    setColKey('');
+                    setColDefault('');
+                    toast.success(`Created extra data column “${key}”`);
+                    void query.refetch();
+                  })
+                  .catch((err: Error) => toast.error(err.message));
+              }}
+            >
+              Create column
+            </Button>
+          </div>
+          {saved.extra_columns.length === 0 ? (
+            <p className='text-muted-foreground text-base'>
+              No extra data columns yet. Upload a file and keep fields as Extra data, or create one
+              above.
+            </p>
+          ) : (
+            <ul className='divide-y rounded-lg border'>
+              {saved.extra_columns.map((c) => (
+                <li
+                  key={c.key}
+                  className='flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'
+                >
+                  <div className='min-w-0'>
+                    <p className='truncate text-base font-medium'>{c.key}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      Extra data
+                      {c.default_value ? ` · default: ${c.default_value}` : ' · no default'}
+                    </p>
+                  </div>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    onClick={() => {
+                      void deleteExtraColumnFn({ data: { key: c.key } })
+                        .then(() => {
+                          toast.success(`Removed “${c.key}”`);
+                          void query.refetch();
+                        })
+                        .catch((err: Error) => toast.error(err.message));
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -575,19 +578,28 @@ function ApiUsageGuide({ token }: { token: string | null }) {
   "record_id": 12,
   "piece_id": 8,
   "pin": "ABC123",
-  "vertical": "medicare",
-  "state": "TX",
-  "zip": "78242",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "address1": "123 Main St",
+  "address2": null,
   "city": "San Antonio",
+  "addressState_X": "TX",
+  "addressZip_X": "78242",
+  "creative_X": "FE-A",
   "age": 67,
-  "age_band": "65-69",
-  "homeowner_status": "owner",
-  "attributes": { "mail_code": "A1" }
+  "age_band": "65-74",
+  "homeowner": "owner",
+  "known_phone": "2105550100",
+  "vertical": "medicare",
+  "list_source": "Upload",
+  "batch_id": 3,
+  "attributes": { "mail_code": "A1" },
+  "extra": { "mail_code": "A1" }
 }`}</pre>
         <p className='text-muted-foreground text-xs'>
           <code>match_method</code> is <code>pin</code>, <code>ani</code>, <code>zip</code>, or{' '}
-          <code>unmatched</code>. Name and street address are never returned. HTTP 401 = bad token, 503
-          = no API created yet.
+          <code>unmatched</code>. On a hit, every database field plus custom extra columns are returned.
+          HTTP 401 = bad token, 503 = no API created yet.
         </p>
       </div>
 

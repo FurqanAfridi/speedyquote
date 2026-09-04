@@ -2,25 +2,32 @@ import type { ColumnMapping, ListRecordInput, MappedField, PortalExtraColumn } f
 import { attrColumnId, slugifyColumnKey } from './columns';
 
 /** Every database field clients can map a file column onto. */
-export const DATABASE_FIELDS: { value: Exclude<MappedField, 'attrs' | 'ignore'>; label: string; hint: string }[] = [
+export const DATABASE_FIELDS: {
+  value: Exclude<MappedField, 'attrs' | 'ignore'>;
+  label: string;
+  hint: string;
+}[] = [
   { value: 'pin', label: 'PIN', hint: 'mail_pieces.pin_code · lookup key' },
   { value: 'first_name', label: 'First name', hint: 'records.first_name' },
   { value: 'last_name', label: 'Last name', hint: 'records.last_name' },
   { value: 'address1', label: 'Address', hint: 'records.address1' },
   { value: 'address2', label: 'Address 2', hint: 'records.address2' },
   { value: 'city', label: 'City', hint: 'records.city' },
-  { value: 'state', label: 'State', hint: 'records.state' },
-  { value: 'zip', label: 'ZIP', hint: 'records.zip · lookup' },
-  { value: 'zip4', label: 'ZIP+4', hint: 'records.zip4' },
-  { value: 'age', label: 'Age', hint: 'records.age' },
-  { value: 'homeowner_status', label: 'Homeowner', hint: 'records.homeowner_status' },
+  { value: 'addressState_X', label: 'addressState_X', hint: 'records.addressState_X' },
+  { value: 'addressZip_X', label: 'addressZip_X', hint: 'records.addressZip_X · lookup' },
+  { value: 'creative_X', label: 'creative_X', hint: 'records.creative_X' },
+  { value: 'age', label: 'age', hint: 'records.age' },
+  { value: 'homeowner', label: 'homeowner', hint: 'records.homeowner' },
   { value: 'known_phone', label: 'Phone / ANI', hint: 'records.known_phone · lookup' },
   { value: 'vertical', label: 'Vertical', hint: 'records.vertical' }
 ];
 
 /** @deprecated use getMappingOptions — kept for any old imports */
 export const FIELD_LABELS = [
-  ...DATABASE_FIELDS.map((f) => ({ value: f.value as MappedField, label: `${f.label} (${f.hint.split(' · ')[0]})` })),
+  ...DATABASE_FIELDS.map((f) => ({
+    value: f.value as MappedField,
+    label: `${f.label} (${f.hint.split(' · ')[0]})`
+  })),
   { value: 'attrs' as MappedField, label: 'Extra data (keep from upload)' },
   { value: 'ignore' as MappedField, label: 'Skip' }
 ];
@@ -69,21 +76,26 @@ const HEADER_TO_FIELD: Record<string, MappedField> = {
   street: 'address1',
   address2: 'address2',
   city: 'city',
-  state: 'state',
-  st: 'state',
-  zip: 'zip',
-  zipcode: 'zip',
-  zip_code: 'zip',
-  postal: 'zip',
-  postal_code: 'zip',
-  zip4: 'zip4',
-  zip_4: 'zip4',
-  plus4: 'zip4',
+  state: 'addressState_X',
+  st: 'addressState_X',
+  address_state: 'addressState_X',
+  addressstate: 'addressState_X',
+  zip: 'addressZip_X',
+  zipcode: 'addressZip_X',
+  zip_code: 'addressZip_X',
+  postal: 'addressZip_X',
+  postal_code: 'addressZip_X',
+  address_zip: 'addressZip_X',
+  addresszip: 'addressZip_X',
+  addressstate_x: 'addressState_X',
+  addresszip_x: 'addressZip_X',
+  creative: 'creative_X',
+  creative_x: 'creative_X',
   age: 'age',
-  homeowner_status: 'homeowner_status',
-  homeowner: 'homeowner_status',
-  homeownerprobabilitymodel: 'homeowner_status',
-  homeowner_probability_model: 'homeowner_status',
+  homeowner_status: 'homeowner',
+  homeowner: 'homeowner',
+  homeownerprobabilitymodel: 'homeowner',
+  homeowner_probability_model: 'homeowner',
   known_phone: 'known_phone',
   phone: 'known_phone',
   phonenumber: 'known_phone',
@@ -221,8 +233,7 @@ export function applyMapping(
     const ageRaw = get('age');
     const parsedAge = ageRaw ? Number.parseInt(ageRaw, 10) : null;
     const age = parsedAge != null && Number.isFinite(parsedAge) ? parsedAge : null;
-    const zipDigits = (get('zip') ?? '').replace(/\D/g, '');
-    const zip4Raw = (get('zip4') ?? '').replace(/\D/g, '');
+    const zipDigits = (get('addressZip_X') ?? '').replace(/\D/g, '');
 
     const attrs: Record<string, string> = {};
     for (const [header, field] of Object.entries(mapping)) {
@@ -241,11 +252,11 @@ export function applyMapping(
       address1: get('address1') || null,
       address2: get('address2') || null,
       city: get('city') || null,
-      state: get('state') || null,
-      zip: zipDigits.slice(0, 5) || get('zip') || null,
-      zip4: zip4Raw.slice(0, 4) || zipDigits.slice(5, 9) || null,
+      addressState_X: get('addressState_X') || null,
+      addressZip_X: zipDigits.slice(0, 5) || get('addressZip_X') || null,
+      creative_X: get('creative_X') || null,
       age,
-      homeowner_status: parseHomeowner(get('homeowner_status')),
+      homeowner: parseHomeowner(get('homeowner')),
       known_phone: get('known_phone') || null,
       list_source: get('list_source') || null,
       vertical: get('vertical') || null,

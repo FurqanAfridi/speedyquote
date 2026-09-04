@@ -19,11 +19,17 @@ const RESERVED_COLUMN_KEYS = new Set([
   'address1',
   'address2',
   'city',
-  'state',
-  'zip',
-  'zip4',
+  'addressstate',
+  'addressstate_x',
+  'addresszip',
+  'addresszip_x',
+  'address_state',
+  'address_zip',
+  'creative',
+  'creative_x',
   'age',
   'age_band',
+  'homeowner',
   'homeowner_status',
   'known_phone',
   'list_source',
@@ -32,8 +38,10 @@ const RESERVED_COLUMN_KEYS = new Set([
   'record_id',
   'name',
   'phone',
-  'homeowner',
-  'ignore'
+  'ignore',
+  'state',
+  'zip',
+  'zip4'
 ]);
 
 function normalizeExtraColumnKey(raw: string) {
@@ -64,11 +72,12 @@ function toStored(row: {
   last_name: string | null;
   address1: string | null;
   city: string | null;
-  state: string | null;
-  zip: string | null;
-  zip4: string | null;
+  addressState_X?: string | null;
+  addressZip_X?: string | null;
+  creative_X?: string | null;
+  creative_x?: string | null;
   age: number | null;
-  homeowner_status: string | null;
+  homeowner?: string | null;
   known_phone: string | null;
   vertical: string | null;
   list_source: string | null;
@@ -93,17 +102,59 @@ function toStored(row: {
     last_name: row.last_name,
     address1: row.address1,
     city: row.city,
-    state: row.state,
-    zip: row.zip,
-    zip4: row.zip4,
+    addressState_X: row.addressState_X ?? null,
+    addressZip_X: row.addressZip_X ?? null,
+    creative_X: row.creative_X ?? row.creative_x ?? null,
     age: row.age,
-    homeowner_status: row.homeowner_status,
+    homeowner: row.homeowner ?? null,
     known_phone: row.known_phone,
     vertical: row.vertical,
     list_source: row.list_source,
     created_at: row.created_at ?? null,
     attrs: asAttrs(row.attrs)
   };
+}
+
+function leadColumnError(message: string) {
+  const missingLeadCol =
+    /column .*records\.(addressState_X|addressZip_X|creative_X|creative_x|homeowner|address_state|address_zip|homeowner_status)/i.test(
+      message
+    ) ||
+    /Could not find the '(addressState_X|addressZip_X|creative_X|creative_x|homeowner)' column/i.test(
+      message
+    );
+
+  if (missingLeadCol) {
+    return new Error(
+      `${message} — If you already ran 700, also run supabase/migrations/20260904080000_fix_creative_x_case.sql (creative_x → creative_X), then refresh the schema.`
+    );
+  }
+  return new Error(message);
+}
+
+type CreativeCol = 'creative_X' | 'creative_x';
+let cachedCreativeCol: CreativeCol | null = null;
+
+/** DB may have creative_x (unquoted migrate) or "creative_X" (quoted). */
+export async function getCreativeColumnName(
+  admin: ReturnType<typeof createAdminClient> = createAdminClient()
+): Promise<CreativeCol> {
+  if (cachedCreativeCol) return cachedCreativeCol;
+  for (const name of ['creative_X', 'creative_x'] as const) {
+    const { error } = await admin.from('records').select(name).limit(1);
+    if (!error) {
+      cachedCreativeCol = name;
+      return name;
+    }
+  }
+  cachedCreativeCol = 'creative_X';
+  return 'creative_X';
+}
+
+function mapCreativePayload<T extends Record<string, unknown>>(row: T, creativeCol: CreativeCol) {
+  if (creativeCol === 'creative_X') return row;
+  const { creative_X, ...rest } = row as T & { creative_X?: unknown };
+  return { ...rest, creative_x: creative_X ?? null };
 }
 
 function batchError(message: string) {
@@ -186,7 +237,39 @@ function settingsError(message: string) {
   return new Error(message);
 }
 
-export async function getPortalSettings(): Promise<PortalSettings> {
+/** Collect every attrs key used on active records (extra data columns). */
+async function discoverExtraKeysFromRecords(): Promise<string[]> {
+  const admin = createAdminClient();
+  const keys = new Set<string>();
+  let from = 0;
+  const pageSize = 1000;
+  for (;;) {
+    const { data, error } = await admin
+      .from('records')
+      .select('attrs')
+      .is('deleted_at', null)
+      .range(from, from + pageSize - 1);
+    if (error) {
+      if (error.message.includes('deleted_at')) throw softDeleteError(error.message);
+      throw new Error(error.message);
+    }
+    const rows = data ?? [];
+    for (const row of rows) {
+      const attrs = row.attrs;
+      if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) continue;
+      for (const key of Object.keys(attrs as Record<string, unknown>)) {
+        const cleaned = slugifyColumnKey(key) || key.trim();
+        if (!cleaned || RESERVED_COLUMN_KEYS.has(cleaned)) continue;
+        keys.add(cleaned);
+      }
+    }
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+  return [...keys].sort((a, b) => a.localeCompare(b));
+}
+
+async function readPortalSettingsRow(): Promise<PortalSettings> {
   const admin = createAdminClient();
   const { data, error } = await admin.from('portal_settings').select('*').eq('id', 1).maybeSingle();
   if (error) throw settingsError(error.message);
@@ -196,6 +279,47 @@ export async function getPortalSettings(): Promise<PortalSettings> {
     return { ...DEFAULT_PORTAL_SETTINGS };
   }
   return parseSettings(data as Record<string, unknown>);
+}
+
+/**
+ * Fast portal settings read (no table scan).
+ * Use syncExtraColumnsFromRecords() on Settings when you need attrs discovery.
+ */
+export async function getPortalSettings(): Promise<PortalSettings> {
+  return readPortalSettingsRow();
+}
+
+/**
+ * Scan active records.attrs once and register any missing Extra data columns.
+ * Call from Settings only — not on every page load.
+ */
+export async function syncExtraColumnsFromRecords(): Promise<PortalSettings> {
+  const settings = await readPortalSettingsRow();
+  let discovered: string[] = [];
+  try {
+    discovered = await discoverExtraKeysFromRecords();
+  } catch {
+    return settings;
+  }
+
+  const have = new Set(settings.extra_columns.map((c) => c.key));
+  const missing = discovered.filter((key) => !have.has(key));
+  if (!missing.length) {
+    return {
+      ...settings,
+      extra_columns: [...settings.extra_columns].sort((a, b) => a.key.localeCompare(b.key))
+    };
+  }
+
+  const merged = [
+    ...settings.extra_columns,
+    ...missing.map((key) => ({ key, default_value: '' }))
+  ].sort((a, b) => a.key.localeCompare(b.key));
+
+  return savePortalSettings({
+    ...settings,
+    extra_columns: merged
+  });
 }
 
 export async function savePortalSettings(input: PortalSettings): Promise<PortalSettings> {
@@ -241,7 +365,7 @@ export async function createExtraColumn(input: {
   });
 
   if (!rpcError && rpcCols != null) {
-    return getPortalSettings();
+    return readPortalSettingsRow();
   }
 
   // Fallback when the SQL function has not been applied yet.
@@ -249,7 +373,7 @@ export async function createExtraColumn(input: {
     throw settingsError(rpcError.message);
   }
 
-  const settings = await getPortalSettings();
+  const settings = await readPortalSettingsRow();
   if (settings.extra_columns.some((c) => c.key === key)) {
     throw new Error(`Column “${key}” already exists`);
   }
@@ -289,13 +413,44 @@ export async function createExtraColumn(input: {
 export async function deleteExtraColumn(keyRaw: string): Promise<PortalSettings> {
   const key = slugifyColumnKey(keyRaw) || keyRaw.trim();
   if (!key) throw new Error('Column key required');
-  const settings = await getPortalSettings();
+  const settings = await readPortalSettingsRow();
   const next: PortalSettings = {
     ...settings,
     extra_columns: settings.extra_columns.filter((c) => c.key !== key),
     visible_columns: settings.visible_columns.filter((id) => id !== attrColumnId(key))
   };
-  return savePortalSettings(next);
+  const saved = await savePortalSettings(next);
+
+  // Strip the key from record attrs so it does not reappear on the next settings sync.
+  const admin = createAdminClient();
+  let from = 0;
+  const pageSize = 500;
+  for (;;) {
+    const { data, error } = await admin
+      .from('records')
+      .select('record_id, attrs')
+      .is('deleted_at', null)
+      .range(from, from + pageSize - 1);
+    if (error) throw softDeleteError(error.message);
+    const rows = data ?? [];
+    for (const row of rows) {
+      const attrs =
+        row.attrs && typeof row.attrs === 'object' && !Array.isArray(row.attrs)
+          ? { ...(row.attrs as Record<string, unknown>) }
+          : null;
+      if (!attrs || !(key in attrs)) continue;
+      delete attrs[key];
+      const { error: updError } = await admin
+        .from('records')
+        .update({ attrs, updated_at: new Date().toISOString() })
+        .eq('record_id', row.record_id);
+      if (updError) throw new Error(updError.message);
+    }
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return saved;
 }
 
 function countBy(values: Array<string | null | undefined>) {
@@ -371,6 +526,7 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
     throw batchError(batchErrorInsert?.message ?? 'Failed to create upload batch');
   }
   const batchId = batchRow.batch_id as number;
+  const creativeCol = await getCreativeColumnName(admin);
 
   const prepared = input.records.map((row: ListRecordInput) => {
     if (!row.pin) skippedNoPin += 1;
@@ -380,37 +536,40 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
         attrs[col.key] = col.default_value;
       }
     }
-    return {
-      first_name: row.first_name ?? null,
-      last_name: row.last_name ?? null,
-      address1: row.address1 ?? null,
-      address2: row.address2 ?? null,
-      city: row.city ?? null,
-      state: row.state ?? null,
-      zip: row.zip ?? null,
-      zip4: row.zip4 ?? null,
-      age: row.age ?? null,
-      age_band: ageBandFromAge(row.age),
-      homeowner_status: row.homeowner_status ?? null,
-      known_phone: row.known_phone ?? null,
-      list_source: row.list_source ?? listSource,
-      list_purchase_date: new Date().toISOString().slice(0, 10),
-      vertical: row.vertical ?? vertical,
-      batch_id: batchId,
-      attrs
-    };
+    return mapCreativePayload(
+      {
+        first_name: row.first_name ?? null,
+        last_name: row.last_name ?? null,
+        address1: row.address1 ?? null,
+        address2: row.address2 ?? null,
+        city: row.city ?? null,
+        addressState_X: row.addressState_X ?? null,
+        addressZip_X: row.addressZip_X ?? null,
+        creative_X: row.creative_X ?? null,
+        age: row.age ?? null,
+        age_band: ageBandFromAge(row.age),
+        homeowner: row.homeowner ?? null,
+        known_phone: row.known_phone ?? null,
+        list_source: row.list_source ?? listSource,
+        list_purchase_date: new Date().toISOString().slice(0, 10),
+        vertical: row.vertical ?? vertical,
+        batch_id: batchId,
+        attrs
+      },
+      creativeCol
+    );
   });
 
   const { data: inserted, error: insertError } = await admin
     .from('records')
     .insert(prepared)
     .select(
-      'record_id, batch_id, first_name, last_name, address1, city, state, zip, zip4, age, homeowner_status, known_phone, vertical, list_source, created_at, attrs'
+      `record_id, batch_id, first_name, last_name, address1, city, addressState_X, addressZip_X, ${creativeCol}, age, homeowner, known_phone, vertical, list_source, created_at, attrs`
     );
 
   if (insertError || !inserted) {
     await admin.from('upload_batches').delete().eq('batch_id', batchId);
-    throw new Error(
+    throw leadColumnError(
       insertError?.message?.includes('batch_id')
         ? 'Run supabase/migrations/20260904020000_upload_batches.sql in Supabase first'
         : insertError?.message?.includes('attrs') || insertError?.message?.includes('vertical')
@@ -525,58 +684,104 @@ export async function deleteUploadBatch(batchId: number): Promise<{ deleted: num
   return { deleted: recordIds.length };
 }
 
-export async function listRecords(limit = Number.POSITIVE_INFINITY): Promise<UploadedPiece[]> {
-  const admin = createAdminClient();
-  const pageSize = 1000;
-  const out: UploadedPiece[] = [];
-  let from = 0;
+/** Soft cap for dashboard list UI — keeps Records page responsive. */
+export const RECORDS_LIST_LIMIT = 3000;
 
-  while (out.length < limit) {
-    const take = Math.min(pageSize, Number.isFinite(limit) ? limit - out.length : pageSize);
-    const to = from + take - 1;
-    const { data, error } = await admin
-      .from('records')
-      .select(
-        `
+async function fetchRecordsPage(from: number, take: number): Promise<UploadedPiece[]> {
+  const admin = createAdminClient();
+  const creativeCol = await getCreativeColumnName(admin);
+  const to = from + take - 1;
+  const { data, error } = await admin
+    .from('records')
+    .select(
+      `
       record_id,
       batch_id,
       first_name,
       last_name,
       address1,
       city,
-      state,
-      zip,
-      zip4,
+      addressState_X,
+      addressZip_X,
+      ${creativeCol},
       age,
-      homeowner_status,
+      homeowner,
       known_phone,
       vertical,
       list_source,
       created_at,
-      attrs,
-      mail_pieces ( piece_id, pin_code, deleted_at )
+      attrs
     `
-      )
-      .is('deleted_at', null)
-      .order('record_id', { ascending: false })
-      .range(from, to);
+    )
+    .is('deleted_at', null)
+    .order('record_id', { ascending: false })
+    .range(from, to);
 
-    if (error) {
-      if (error.message.includes('batch_id')) {
-        throw batchError(error.message);
-      }
-      if (error.message.includes('deleted_at')) {
-        throw softDeleteError(error.message);
-      }
-      throw new Error(error.message);
+  if (error) {
+    if (error.message.includes('batch_id')) {
+      throw batchError(error.message);
     }
-    const batch = (data ?? []).map((row) => toStored(row as Parameters<typeof toStored>[0]));
-    out.push(...batch);
-    if (batch.length < take) break;
-    from += take;
+    if (error.message.includes('deleted_at')) {
+      throw softDeleteError(error.message);
+    }
+    throw leadColumnError(error.message);
   }
 
-  return out;
+  const rows = data ?? [];
+  if (!rows.length) return [];
+
+  const ids = rows.map((r) => r.record_id as number);
+  const pieceByRecord = new Map<number, { piece_id: number; pin_code: string }>();
+
+  // Chunk .in() to avoid PostgREST URL limits on large pages.
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const { data: pieces, error: pieceError } = await admin
+      .from('mail_pieces')
+      .select('piece_id, pin_code, record_id')
+      .in('record_id', chunk)
+      .is('deleted_at', null)
+      .order('piece_id', { ascending: false });
+    if (pieceError) throw softDeleteError(pieceError.message);
+    for (const p of pieces ?? []) {
+      const rid = p.record_id as number;
+      if (!pieceByRecord.has(rid)) {
+        pieceByRecord.set(rid, { piece_id: p.piece_id as number, pin_code: p.pin_code as string });
+      }
+    }
+  }
+
+  return rows.map((row) => {
+    const piece = pieceByRecord.get(row.record_id as number);
+    return toStored({
+      ...(row as Parameters<typeof toStored>[0]),
+      mail_pieces: piece ? [piece] : []
+    });
+  });
+}
+
+export async function listRecords(limit = RECORDS_LIST_LIMIT): Promise<UploadedPiece[]> {
+  const pageSize = 1000;
+  const cap = Number.isFinite(limit) ? Math.max(0, limit) : RECORDS_LIST_LIMIT;
+  if (cap === 0) return [];
+
+  const firstTake = Math.min(pageSize, cap);
+  const first = await fetchRecordsPage(0, firstTake);
+  if (first.length < firstTake || first.length >= cap) {
+    return first.slice(0, cap);
+  }
+
+  const remaining = cap - first.length;
+  const morePages = Math.ceil(remaining / pageSize);
+  const rest = await Promise.all(
+    Array.from({ length: morePages }, (_, i) => {
+      const from = (i + 1) * pageSize;
+      const take = Math.min(pageSize, remaining - i * pageSize);
+      return fetchRecordsPage(from, take);
+    })
+  );
+
+  return [...first, ...rest.flat()].slice(0, cap);
 }
 
 function pinError(message: string) {
@@ -590,29 +795,35 @@ export async function updateRecord(input: RecordMutationInput): Promise<void> {
   if (!input.record_id) throw new Error('Missing record id');
   const pin = (input.pin ?? '').trim();
   const admin = createAdminClient();
+  const creativeCol = await getCreativeColumnName(admin);
 
   const { error } = await admin
     .from('records')
-    .update({
-      first_name: input.first_name ?? null,
-      last_name: input.last_name ?? null,
-      address1: input.address1 ?? null,
-      city: input.city ?? null,
-      state: input.state ?? null,
-      zip: input.zip ?? null,
-      zip4: input.zip4 ?? null,
-      age: input.age ?? null,
-      age_band: ageBandFromAge(input.age),
-      homeowner_status: input.homeowner_status ?? null,
-      known_phone: input.known_phone ?? null,
-      list_source: input.list_source ?? null,
-      vertical: input.vertical ?? null,
-      attrs: input.attrs ?? {},
-      updated_at: new Date().toISOString()
-    })
+    .update(
+      mapCreativePayload(
+        {
+          first_name: input.first_name ?? null,
+          last_name: input.last_name ?? null,
+          address1: input.address1 ?? null,
+          city: input.city ?? null,
+          addressState_X: input.addressState_X ?? null,
+          addressZip_X: input.addressZip_X ?? null,
+          creative_X: input.creative_X ?? null,
+          age: input.age ?? null,
+          age_band: ageBandFromAge(input.age),
+          homeowner: input.homeowner ?? null,
+          known_phone: input.known_phone ?? null,
+          list_source: input.list_source ?? null,
+          vertical: input.vertical ?? null,
+          attrs: input.attrs ?? {},
+          updated_at: new Date().toISOString()
+        },
+        creativeCol
+      )
+    )
     .eq('record_id', input.record_id);
 
-  if (error) throw new Error(error.message);
+  if (error) throw leadColumnError(error.message);
 
   const { data: pieces, error: pieceReadError } = await admin
     .from('mail_pieces')
@@ -700,38 +911,65 @@ export async function listLookupLogs(limit = 50): Promise<LookupLogRow[]> {
 
 export async function getOverviewStats() {
   const admin = createAdminClient();
-  const [records, pieces, lookups, hits, recent, recRows, logRows] = await Promise.all([
-    admin.from('records').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-    admin
-      .from('mail_pieces')
-      .select('*', { count: 'exact', head: true })
-      .is('deleted_at', null),
-    admin.from('lookup_logs').select('*', { count: 'exact', head: true }),
-    admin.from('lookup_logs').select('*', { count: 'exact', head: true }).eq('hit', true),
-    listLookupLogs(12),
-    admin
-      .from('records')
-      .select('vertical, state, list_source, created_at, homeowner_status, known_phone')
-      .is('deleted_at', null)
-      .order('record_id', { ascending: false })
-      .limit(8000),
-    admin.from('lookup_logs').select('hit, call_id, timestamp, latency_ms').order('timestamp', { ascending: false }).limit(500)
-  ]);
+  const weekAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const dayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [records, pieces, lookups, hits, withPhone, recs7d, lookups24h, hits24h, recent, recRows, logRows] =
+    await Promise.all([
+      admin.from('records').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+      admin
+        .from('mail_pieces')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null),
+      admin.from('lookup_logs').select('*', { count: 'exact', head: true }),
+      admin.from('lookup_logs').select('*', { count: 'exact', head: true }).eq('hit', true),
+      admin
+        .from('records')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .not('known_phone', 'is', null),
+      admin
+        .from('records')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .gte('created_at', weekAgoIso),
+      admin
+        .from('lookup_logs')
+        .select('*', { count: 'exact', head: true })
+        .gte('timestamp', dayAgoIso),
+      admin
+        .from('lookup_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('hit', true)
+        .gte('timestamp', dayAgoIso),
+      listLookupLogs(12),
+      // Small sample for breakdown charts only (not coverage totals).
+      admin
+        .from('records')
+        .select('vertical, addressState_X, list_source, homeowner')
+        .is('deleted_at', null)
+        .order('record_id', { ascending: false })
+        .limit(400),
+      admin
+        .from('lookup_logs')
+        .select('call_id, latency_ms')
+        .order('timestamp', { ascending: false })
+        .limit(100)
+    ]);
 
   if (records.error) throw new Error(records.error.message);
   if (pieces.error) throw new Error(pieces.error.message);
   if (lookups.error) throw new Error(lookups.error.message);
   if (hits.error) throw new Error(hits.error.message);
+  if (withPhone.error) throw new Error(withPhone.error.message);
+  if (recs7d.error) throw new Error(recs7d.error.message);
+  if (lookups24h.error) throw new Error(lookups24h.error.message);
+  if (hits24h.error) throw new Error(hits24h.error.message);
   if (recRows.error) throw new Error(recRows.error.message);
   if (logRows.error) throw new Error(logRows.error.message);
 
   const recs = recRows.data ?? [];
   const logs = logRows.data ?? [];
-  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const logs24h = logs.filter((l) => new Date(l.timestamp as string).getTime() >= dayAgo);
-  const recs7d = recs.filter((r) => r.created_at && new Date(r.created_at as string).getTime() >= weekAgo);
-  const withPhone = recs.filter((r) => r.known_phone).length;
   const missingPin = Math.max(0, (records.count ?? 0) - (pieces.count ?? 0));
   const latencies = logs.map((l) => l.latency_ms).filter((n): n is number => typeof n === 'number');
   const avgLatency = latencies.length
@@ -743,18 +981,18 @@ export async function getOverviewStats() {
     pinCount: pieces.count ?? 0,
     lookupCount: lookups.count ?? 0,
     hitCount: hits.count ?? 0,
-    recordsLast7Days: recs7d.length,
-    withPhoneCount: withPhone,
+    recordsLast7Days: recs7d.count ?? 0,
+    withPhoneCount: withPhone.count ?? 0,
     missingPinCount: missingPin,
-    lookupsLast24h: logs24h.length,
-    hitsLast24h: logs24h.filter((l) => l.hit).length,
-    uniqueStates: new Set(recs.map((r) => r.state).filter(Boolean)).size,
+    lookupsLast24h: lookups24h.count ?? 0,
+    hitsLast24h: hits24h.count ?? 0,
+    uniqueStates: new Set(recs.map((r) => r.addressState_X).filter(Boolean)).size,
     uniqueVerticals: new Set(recs.map((r) => r.vertical).filter(Boolean)).size,
     avgLatencyMs: avgLatency,
     byVertical: countBy(recs.map((r) => r.vertical as string | null)),
-    byState: countBy(recs.map((r) => r.state as string | null)).slice(0, 12),
+    byState: countBy(recs.map((r) => r.addressState_X as string | null)).slice(0, 12),
     byListSource: countBy(recs.map((r) => r.list_source as string | null)),
-    byHomeowner: countBy(recs.map((r) => r.homeowner_status as string | null)),
+    byHomeowner: countBy(recs.map((r) => r.homeowner as string | null)),
     byLookupMethod: countBy(logs.map((l) => (l.call_id as string | null) ?? 'unknown')),
     recentLogs: recent
   };

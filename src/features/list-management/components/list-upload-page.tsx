@@ -16,7 +16,9 @@ import { Label } from '@/components/ui/label';
 import {
   deleteRecordsFn,
   deleteUploadBatchFn,
-  getListUploadOptions,
+  getListUploadMeta,
+  getRecordsList,
+  createExtraColumnFn,
   updatePortalSettings,
   updateRecordFn,
   uploadMailingList
@@ -40,7 +42,8 @@ import {
   CORE_COLUMNS,
   attrColumnId,
   defaultBatchTimestamp,
-  resolveVisibleColumnIds
+  resolveVisibleColumnIds,
+  slugifyColumnKey
 } from '@/features/list-management/lib/columns';
 import {
   DropdownMenu,
@@ -95,11 +98,11 @@ function rowSearchBlob(row: UploadedPiece): string {
     row.last_name,
     row.address1,
     row.city,
-    row.state,
-    row.zip,
-    row.zip4,
+    row.addressState_X,
+    row.addressZip_X,
+    row.creative_X,
     row.age,
-    row.homeowner_status,
+    row.homeowner,
     row.known_phone,
     row.vertical,
     row.list_source,
@@ -124,21 +127,23 @@ function cellValue(row: UploadedPiece, id: string, batchLabelById?: Map<number, 
       return row.address1 ?? '—';
     case 'city':
       return row.city ?? '—';
-    case 'state':
-      return row.state ?? '—';
-    case 'zip':
-      return row.zip4 ? `${row.zip}-${row.zip4}` : (row.zip ?? '—');
+    case 'addressState_X':
+      return row.addressState_X ?? '—';
+    case 'addressZip_X':
+      return row.addressZip_X ?? '—';
+    case 'creative_X':
+      return row.creative_X ?? '—';
     case 'phone':
       return row.known_phone ?? '—';
     case 'homeowner':
-      return row.homeowner_status ?? '—';
+      return row.homeowner ?? '—';
     case 'age':
       return row.age != null ? String(row.age) : '—';
     case 'list_source':
       return row.list_source ?? '—';
     case 'batch':
       if (row.batch_id == null) return '—';
-      return batchLabelById?.get(row.batch_id) ?? `Upload #${row.batch_id}`;
+      return batchLabelById?.get(row.batch_id) ?? `Batch #${row.batch_id}`;
     default:
       if (id.startsWith('attr:')) return row.attrs[id.slice(5)] ?? '—';
       return '—';
@@ -156,12 +161,18 @@ const PAGE_SIZE_OPTIONS = [
 
 export function ListUploadPage() {
   const queryClient = useQueryClient();
-  const optionsQuery = useQuery({
-    queryKey: ['list-upload-options'],
-    queryFn: () => getListUploadOptions()
+  const metaQuery = useQuery({
+    queryKey: ['list-upload-meta'],
+    queryFn: () => getListUploadMeta(),
+    staleTime: 5 * 60_000
+  });
+  const recordsQuery = useQuery({
+    queryKey: ['records-list'],
+    queryFn: () => getRecordsList(),
+    staleTime: 60_000
   });
 
-  const settings: PortalSettings = optionsQuery.data?.settings ?? DEFAULT_PORTAL_SETTINGS;
+  const settings: PortalSettings = metaQuery.data?.settings ?? DEFAULT_PORTAL_SETTINGS;
 
   const [fileName, setFileName] = React.useState<string | null>(null);
   const [headers, setHeaders] = React.useState<string[]>([]);
@@ -185,15 +196,22 @@ export function ListUploadPage() {
   const [columnDraft, setColumnDraft] = React.useState<string[] | null>(null);
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [batchesOpen, setBatchesOpen] = React.useState(false);
-  const strippedExtraVisible = React.useRef(false);
+  const [newColKey, setNewColKey] = React.useState('');
+  const [newColDefault, setNewColDefault] = React.useState('');
+
+  function refreshListData() {
+    void queryClient.invalidateQueries({ queryKey: ['list-upload-meta'] });
+    void queryClient.invalidateQueries({ queryKey: ['records-list'] });
+    void queryClient.invalidateQueries({ queryKey: ['overview'] });
+  }
 
   React.useEffect(() => {
-    if (!optionsQuery.data?.settings) return;
+    if (!metaQuery.data?.settings) return;
     setVertical((cur) => {
       if (cur) return cur;
-      return optionsQuery.data!.settings!.verticals[0]?.name ?? '';
+      return metaQuery.data!.settings!.verticals[0]?.name ?? '';
     });
-  }, [optionsQuery.data?.settings]);
+  }, [metaQuery.data?.settings]);
 
   const mapped = applyMapping(rawRows, mapping);
   const pendingNewColumns = mapped.newExtraKeys.filter(
@@ -207,8 +225,7 @@ export function ListUploadPage() {
       const batchNote = result.batch ? ` as “${result.batch.label}”` : '';
       toast.success(`Saved ${result.recordsInserted} records${batchNote}`);
       setBatchLabel('');
-      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
-      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      refreshListData();
     },
     onError: (err: Error) => toast.error(err.message)
   });
@@ -225,11 +242,11 @@ export function ListUploadPage() {
               last_name: data.last_name,
               address1: data.address1,
               city: data.city,
-              state: data.state,
-              zip: data.zip,
-              zip4: data.zip4,
+              addressState_X: data.addressState_X,
+              addressZip_X: data.addressZip_X,
+              creative_X: data.creative_X,
               age: data.age,
-              homeowner_status: data.homeowner_status,
+              homeowner: data.homeowner,
               known_phone: data.known_phone,
               list_source: data.list_source,
               vertical: data.vertical,
@@ -245,8 +262,7 @@ export function ListUploadPage() {
       toast.success(editing ? 'Record updated' : 'Record created');
       setFormOpen(false);
       setEditing(null);
-      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
-      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      refreshListData();
     },
     onError: (err: Error) => toast.error(err.message)
   });
@@ -257,8 +273,7 @@ export function ListUploadPage() {
       toast.success(`Removed ${result.deleted} record${result.deleted === 1 ? '' : 's'} from the portal`);
       setSelected([]);
       setDeleteIds(null);
-      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
-      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      refreshListData();
     },
     onError: (err: Error) => toast.error(err.message)
   });
@@ -270,8 +285,7 @@ export function ListUploadPage() {
       setDeleteBatchId(null);
       setFilterBatch((cur) => (cur && Number(cur) === batchId ? '' : cur));
       setSelected([]);
-      void queryClient.invalidateQueries({ queryKey: ['list-upload-options'] });
-      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      refreshListData();
     },
     onError: (err: Error) => toast.error(err.message)
   });
@@ -280,7 +294,7 @@ export function ListUploadPage() {
     mutationFn: (next: PortalSettings) => updatePortalSettings({ data: next }),
     onSuccess: (saved) => {
       queryClient.setQueryData(['portal-settings'], saved);
-      queryClient.setQueryData(['list-upload-options'], (old: unknown) => {
+      queryClient.setQueryData(['list-upload-meta'], (old: unknown) => {
         if (!old || typeof old !== 'object') return old;
         return { ...(old as Record<string, unknown>), settings: saved };
       });
@@ -288,21 +302,49 @@ export function ListUploadPage() {
     onError: (err: Error) => toast.error(err.message)
   });
 
-  // Extra columns used to be auto-added to visible_columns; strip them once so only DB columns show by default.
+  // Remap legacy column ids and drop Extra columns that are no longer in Settings.
+  const cleanedVisibleKey = React.useRef<string>('');
   React.useEffect(() => {
-    if (strippedExtraVisible.current || !optionsQuery.data?.settings) return;
-    const vis = optionsQuery.data.settings.visible_columns;
-    if (!vis.some((id) => id.startsWith('attr:'))) {
-      strippedExtraVisible.current = true;
+    if (!metaQuery.data?.settings) return;
+    const current = metaQuery.data.settings;
+    const allowedExtra = new Set(current.extra_columns.map((c) => attrColumnId(c.key)));
+    const remap: Record<string, string> = {
+      state: 'addressState_X',
+      zip: 'addressZip_X',
+      zip4: 'addressZip_X',
+      address_state: 'addressState_X',
+      address_zip: 'addressZip_X',
+      addressState: 'addressState_X',
+      addressZip: 'addressZip_X',
+      creative: 'creative_X',
+      homeowner_status: 'homeowner',
+      Upload: 'batch',
+      upload: 'batch'
+    };
+    const cleaned = [
+      ...new Set(
+        current.visible_columns
+          .map((id) => remap[id] ?? id)
+          .filter((id) => {
+            if (id.startsWith('attr:')) return allowedExtra.has(id);
+            return (
+              CORE_COLUMNS.some((c) => c.id === id) || id === 'batch' || id === 'list_source'
+            );
+          })
+      )
+    ];
+    const key = cleaned.join('\0');
+    if (key === current.visible_columns.join('\0')) {
+      cleanedVisibleKey.current = key;
       return;
     }
-    strippedExtraVisible.current = true;
-    const cleaned = vis.filter((id) => !id.startsWith('attr:'));
+    if (cleanedVisibleKey.current === key) return;
+    cleanedVisibleKey.current = key;
     saveColumns.mutate({
-      ...optionsQuery.data.settings,
+      ...current,
       visible_columns: cleaned.length ? cleaned : CORE_COLUMNS.map((c) => c.id)
     });
-  }, [optionsQuery.data?.settings]);
+  }, [metaQuery.data?.settings]);
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -318,22 +360,23 @@ export function ListUploadPage() {
     [settings.extra_columns]
   );
 
-  const recent = optionsQuery.data?.recentPins ?? [];
-  const batches = optionsQuery.data?.batches ?? [];
+  const recent = recordsQuery.data?.recentPins ?? [];
+  const batches = metaQuery.data?.batches ?? [];
+  const recordsTruncated = Boolean(recordsQuery.data?.truncated);
   const batchLabelById = React.useMemo(
     () => new Map(batches.map((b) => [b.batch_id, b.label])),
     [batches]
   );
-  const attrKeys = React.useMemo(() => {
-    const keys = new Set<string>();
-    for (const r of recent) Object.keys(r.attrs ?? {}).forEach((k) => keys.add(k));
-    for (const c of settings.extra_columns) keys.add(c.key);
-    return [...keys].sort();
-  }, [recent, settings.extra_columns]);
+  // Extra columns for Choose columns / forms = Settings registry only
+  // (removed / soft-deleted extras must not appear in the dropdown).
+  const attrKeys = React.useMemo(
+    () => [...settings.extra_columns.map((c) => c.key)].sort((a, b) => a.localeCompare(b)),
+    [settings.extra_columns]
+  );
 
   const allColumnDefs = React.useMemo(
     () => [
-      { id: 'batch', label: 'Upload' },
+      { id: 'batch', label: 'Batch' },
       ...CORE_COLUMNS.map((c) => ({ id: c.id, label: c.label })),
       ...attrKeys.map((k) => ({ id: attrColumnId(k), label: `Extra · ${k}` }))
     ],
@@ -347,7 +390,7 @@ export function ListUploadPage() {
   const extraColumnDefs = allColumnDefs.filter((c) => c.id.startsWith('attr:'));
 
   const states = React.useMemo(
-    () => [...new Set(recent.map((r) => r.state).filter(Boolean) as string[])].sort(),
+    () => [...new Set(recent.map((r) => r.addressState_X).filter(Boolean) as string[])].sort(),
     [recent]
   );
   const verticalsInData = React.useMemo(
@@ -355,7 +398,7 @@ export function ListUploadPage() {
     [recent]
   );
   const homeownersInData = React.useMemo(
-    () => [...new Set(recent.map((r) => r.homeowner_status).filter(Boolean) as string[])].sort(),
+    () => [...new Set(recent.map((r) => r.homeowner).filter(Boolean) as string[])].sort(),
     [recent]
   );
 
@@ -363,9 +406,9 @@ export function ListUploadPage() {
     const q = search.trim().toLowerCase();
     const batchId = filterBatch ? Number(filterBatch) : null;
     return recent.filter((r) => {
-      if (filterState && r.state !== filterState) return false;
+      if (filterState && r.addressState_X !== filterState) return false;
       if (filterVertical && r.vertical !== filterVertical) return false;
-      if (filterHomeowner && r.homeowner_status !== filterHomeowner) return false;
+      if (filterHomeowner && r.homeowner !== filterHomeowner) return false;
       if (batchId != null && Number.isFinite(batchId) && r.batch_id !== batchId) return false;
       if (filterPin === 'with' && !r.pin_code) return false;
       if (filterPin === 'without' && r.pin_code) return false;
@@ -508,6 +551,55 @@ export function ListUploadPage() {
             <p className='text-muted-foreground text-sm'>
               A name helps you find or remove this upload later. Leave blank to use the date and time.
             </p>
+          </div>
+
+          <div className='space-y-3 rounded-lg border p-4'>
+            <div>
+              <Label>Create an extra column</Label>
+              <p className='text-muted-foreground mt-1 text-sm'>
+                Add a custom field you can map from your file. It is stored with each lead and returned
+                by the lookup API.
+              </p>
+            </div>
+            <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
+              <Input
+                placeholder='Column name, e.g. mail_code'
+                value={newColKey}
+                onChange={(e) => setNewColKey(e.target.value)}
+              />
+              <Input
+                placeholder='Default value (optional)'
+                value={newColDefault}
+                onChange={(e) => setNewColDefault(e.target.value)}
+              />
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => {
+                  const key = slugifyColumnKey(newColKey);
+                  if (!key) {
+                    toast.error('Enter a valid column name');
+                    return;
+                  }
+                  void createExtraColumnFn({ data: { key, default_value: newColDefault } })
+                    .then(() => {
+                      setNewColKey('');
+                      setNewColDefault('');
+                      toast.success(`Created column “${key}”`);
+                      void queryClient.invalidateQueries({ queryKey: ['list-upload-meta'] });
+                      void queryClient.invalidateQueries({ queryKey: ['portal-settings'] });
+                    })
+                    .catch((err: Error) => toast.error(err.message));
+                }}
+              >
+                Create column
+              </Button>
+            </div>
+            {settings.extra_columns.length > 0 ? (
+              <p className='text-muted-foreground text-sm'>
+                Existing: {settings.extra_columns.map((c) => c.key).join(', ')}
+              </p>
+            ) : null}
           </div>
 
           {headers.length > 0 && (
@@ -674,10 +766,17 @@ export function ListUploadPage() {
           <div className='min-w-0'>
             <CardTitle>Your records</CardTitle>
             <CardDescription className='text-base'>
-              {filtered.length.toLocaleString()} shown
-              {recent.length !== filtered.length
-                ? ` (filtered from ${recent.length.toLocaleString()})`
-                : ''}
+              {recordsQuery.isLoading
+                ? 'Loading people…'
+                : `${filtered.length.toLocaleString()} shown${
+                    recent.length !== filtered.length
+                      ? ` (filtered from ${recent.length.toLocaleString()})`
+                      : ''
+                  }${
+                    recordsTruncated
+                      ? ` · showing the newest ${recent.length.toLocaleString()} for speed`
+                      : ''
+                  }`}
             </CardDescription>
           </div>
           <div className='flex flex-wrap items-center gap-2'>
@@ -688,7 +787,7 @@ export function ListUploadPage() {
                 setFormOpen(true);
               }}
             >
-              Add one person
+              Add single lead
             </Button>
             {selected.length > 0 && (
               <Button
@@ -829,8 +928,10 @@ export function ListUploadPage() {
             </p>
           </div>
 
-          {optionsQuery.isLoading ? (
+          {recordsQuery.isLoading ? (
             <p className='text-muted-foreground text-base'>Loading…</p>
+          ) : recordsQuery.isError ? (
+            <p className='text-destructive text-base'>{recordsQuery.error.message}</p>
           ) : shownColumns.length === 0 ? (
             <p className='text-muted-foreground text-base'>
               Tap “Choose columns” above to pick which fields to show.

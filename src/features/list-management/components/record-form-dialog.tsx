@@ -12,17 +12,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { PortalSettings, RecordMutationInput, UploadedPiece } from '@/features/list-management/api/types';
 
-function zipDisplay(row: UploadedPiece | null) {
-  if (!row) return '';
-  if (row.zip && row.zip4) return `${row.zip}-${row.zip4}`;
-  return row.zip ?? '';
-}
-
-function splitZip(raw: string) {
-  const digits = raw.replace(/\D/g, '');
-  return { zip: digits.slice(0, 5) || null, zip4: digits.slice(5, 9) || null };
-}
-
 export function RecordFormDialog({
   open,
   record,
@@ -46,11 +35,12 @@ export function RecordFormDialog({
   const [lastName, setLastName] = React.useState('');
   const [address1, setAddress1] = React.useState('');
   const [city, setCity] = React.useState('');
-  const [state, setState] = React.useState('');
-  const [zip, setZip] = React.useState('');
+  const [addressStateX, setAddressStateX] = React.useState('');
+  const [addressZipX, setAddressZipX] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [age, setAge] = React.useState('');
   const [homeowner, setHomeowner] = React.useState('');
+  const [creativeX, setCreativeX] = React.useState('');
   const [vertical, setVertical] = React.useState('');
   const [attrs, setAttrs] = React.useState<Record<string, string>>({});
 
@@ -61,11 +51,12 @@ export function RecordFormDialog({
     setLastName(record?.last_name ?? '');
     setAddress1(record?.address1 ?? '');
     setCity(record?.city ?? '');
-    setState(record?.state ?? '');
-    setZip(zipDisplay(record));
+    setAddressStateX(record?.addressState_X ?? '');
+    setAddressZipX(record?.addressZip_X ?? '');
     setPhone(record?.known_phone ?? '');
     setAge(record?.age != null ? String(record.age) : '');
-    setHomeowner(record?.homeowner_status ?? '');
+    setHomeowner(record?.homeowner ?? '');
+    setCreativeX(record?.creative_X ?? '');
     setVertical(record?.vertical ?? settings.verticals[0]?.name ?? '');
     const next: Record<string, string> = {};
     for (const key of extraKeys) next[key] = record?.attrs?.[key] ?? '';
@@ -79,7 +70,7 @@ export function RecordFormDialog({
 
   function submit() {
     const parsedAge = age.trim() ? Number.parseInt(age, 10) : null;
-    const { zip: zip5, zip4 } = splitZip(zip);
+    const zipDigits = addressZipX.replace(/\D/g, '').slice(0, 5);
     const cleanAttrs: Record<string, string> = {};
     for (const [k, v] of Object.entries(attrs)) {
       if (v.trim()) cleanAttrs[k] = v.trim();
@@ -91,11 +82,11 @@ export function RecordFormDialog({
       last_name: lastName.trim() || null,
       address1: address1.trim() || null,
       city: city.trim() || null,
-      state: state.trim() || null,
-      zip: zip5,
-      zip4,
+      addressState_X: addressStateX.trim() || null,
+      addressZip_X: zipDigits || null,
+      creative_X: creativeX.trim() || null,
       age: parsedAge != null && Number.isFinite(parsedAge) ? parsedAge : null,
-      homeowner_status: homeowner.trim() || null,
+      homeowner: homeowner.trim() || null,
       known_phone: phone.trim() || null,
       list_source: record?.list_source ?? settings.default_list_source ?? null,
       vertical: vertical.trim() || null,
@@ -107,9 +98,9 @@ export function RecordFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-lg'>
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit record' : 'New record'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit record' : 'Add single lead'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update this row and save.' : 'Add a single record without uploading a file.'}
+            {isEdit ? 'Update this lead and save.' : 'Add one lead without uploading a file.'}
           </DialogDescription>
         </DialogHeader>
         <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
@@ -134,31 +125,47 @@ export function RecordFormDialog({
             <Input id='rec-city' value={city} onChange={(e) => setCity(e.target.value)} />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='rec-state'>State</Label>
-            <Input id='rec-state' value={state} onChange={(e) => setState(e.target.value)} />
+            <Label htmlFor='rec-addressState_X'>addressState_X</Label>
+            <Input
+              id='rec-addressState_X'
+              value={addressStateX}
+              onChange={(e) => setAddressStateX(e.target.value)}
+            />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='rec-zip'>ZIP</Label>
-            <Input id='rec-zip' value={zip} onChange={(e) => setZip(e.target.value)} />
+            <Label htmlFor='rec-addressZip_X'>addressZip_X</Label>
+            <Input
+              id='rec-addressZip_X'
+              value={addressZipX}
+              onChange={(e) => setAddressZipX(e.target.value)}
+            />
           </div>
           <div className='space-y-2'>
             <Label htmlFor='rec-phone'>Phone</Label>
             <Input id='rec-phone' value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='rec-age'>Age</Label>
+            <Label htmlFor='rec-age'>age</Label>
             <Input id='rec-age' value={age} onChange={(e) => setAge(e.target.value)} />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='rec-home'>Homeowner</Label>
+            <Label htmlFor='rec-home'>homeowner</Label>
             <Input id='rec-home' value={homeowner} onChange={(e) => setHomeowner(e.target.value)} />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='rec-creative_X'>creative_X</Label>
+            <Input
+              id='rec-creative_X'
+              value={creativeX}
+              onChange={(e) => setCreativeX(e.target.value)}
+            />
           </div>
           <div className='space-y-2'>
             <Label htmlFor='rec-vertical'>Vertical</Label>
             {settings.verticals.length > 0 ? (
               <select
                 id='rec-vertical'
-                className='border-input bg-background h-9 w-full rounded-md border px-2 text-sm'
+                className='border-input bg-background h-11 w-full rounded-md border px-3 text-base'
                 value={vertical}
                 onChange={(e) => setVertical(e.target.value)}
               >
@@ -188,7 +195,7 @@ export function RecordFormDialog({
             Cancel
           </Button>
           <Button type='button' disabled={pending} onClick={submit}>
-            {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create record'}
+            {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create lead'}
           </Button>
         </DialogFooter>
       </DialogContent>

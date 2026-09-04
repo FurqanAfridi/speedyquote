@@ -16,7 +16,9 @@ import {
   listLookupLogs,
   listRecords,
   listUploadBatches,
+  RECORDS_LIST_LIMIT,
   savePortalSettings,
+  syncExtraColumnsFromRecords,
   updateRecord,
   uploadList
 } from './service';
@@ -30,20 +32,64 @@ async function gate() {
   }
 }
 
-export const getListUploadOptions = createServerFn({ method: 'GET' }).handler(async () => {
+/** Records page chrome: settings + batches only (instant). */
+export const getListUploadMeta = createServerFn({ method: 'GET' }).handler(async () => {
   await gate();
-  const [recentPins, logs, settings, batches] = await Promise.all([
-    listRecords(),
-    listLookupLogs(80),
+  const [settings, batches] = await Promise.all([
     getPortalSettings().catch(() => null),
     listUploadBatches(100).catch(() => [] as Awaited<ReturnType<typeof listUploadBatches>>)
   ]);
-  return { recentPins, logs, settings, batches };
+  return { settings, batches };
+});
+
+/** Records table data (capped + parallel pages). */
+export const getRecordsList = createServerFn({ method: 'GET' }).handler(async () => {
+  await gate();
+  const recentPins = await listRecords(RECORDS_LIST_LIMIT);
+  return {
+    recentPins,
+    truncated: recentPins.length >= RECORDS_LIST_LIMIT,
+    limit: RECORDS_LIST_LIMIT
+  };
+});
+
+/** @deprecated Prefer getListUploadMeta + getRecordsList for faster first paint. */
+export const getListUploadOptions = createServerFn({ method: 'GET' }).handler(async () => {
+  await gate();
+  const [meta, records] = await Promise.all([
+    (async () => {
+      const [settings, batches] = await Promise.all([
+        getPortalSettings().catch(() => null),
+        listUploadBatches(100).catch(() => [] as Awaited<ReturnType<typeof listUploadBatches>>)
+      ]);
+      return { settings, batches };
+    })(),
+    listRecords(RECORDS_LIST_LIMIT)
+  ]);
+  return {
+    recentPins: records,
+    logs: [] as Awaited<ReturnType<typeof listLookupLogs>>,
+    settings: meta.settings,
+    batches: meta.batches
+  };
+});
+
+/** Lookups page: logs only. */
+export const getLookupLogsPage = createServerFn({ method: 'GET' }).handler(async () => {
+  await gate();
+  const logs = await listLookupLogs(100);
+  return { logs };
 });
 
 export const fetchPortalSettings = createServerFn({ method: 'GET' }).handler(async () => {
   await gate();
   return getPortalSettings();
+});
+
+/** Settings page: discover Extra columns from attrs (runs once on Settings). */
+export const syncPortalExtraColumnsFn = createServerFn({ method: 'POST' }).handler(async () => {
+  await gate();
+  return syncExtraColumnsFromRecords();
 });
 
 export const updatePortalSettings = createServerFn({ method: 'POST' })
