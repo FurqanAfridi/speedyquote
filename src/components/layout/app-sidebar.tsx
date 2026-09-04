@@ -68,9 +68,9 @@ export default function AppSidebar() {
             <SidebarMenuButton size='lg' asChild>
               <Link to='/dashboard/overview' aria-label={siteConfig.name}>
                 <BrandLogo className='size-8' />
-                <div className='grid flex-1 text-left text-sm leading-tight'>
+                <div className='grid flex-1 text-left text-base leading-tight'>
                   <span className='truncate font-semibold'>{orgName}</span>
-                  <span className='text-muted-foreground truncate text-xs'>Dashboard</span>
+                  <span className='text-muted-foreground truncate text-sm'>Dashboard</span>
                 </div>
               </Link>
             </SidebarMenuButton>

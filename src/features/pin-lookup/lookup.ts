@@ -85,6 +85,7 @@ async function pieceForRecord(recordId: number) {
     .from('mail_pieces')
     .select('piece_id, pin_code, record_id')
     .eq('record_id', recordId)
+    .is('deleted_at', null)
     .order('piece_id', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -151,6 +152,7 @@ export async function lookupAttributes(input: {
         .from('mail_pieces')
         .select('piece_id, pin_code, record_id')
         .in('pin_code', codes)
+        .is('deleted_at', null)
         .limit(5);
       if (error) throw new Error(error.message);
       if (pieces?.length) {
@@ -158,7 +160,8 @@ export async function lookupAttributes(input: {
           .from('records')
           .select(RECORD_SELECT)
           .eq('record_id', pieces[0].record_id)
-          .single();
+          .is('deleted_at', null)
+          .maybeSingle();
         if (rec) body = toResult(rec as RecordRow, pieces[0], 'pin', pieces.length);
       }
     } else if (ani) {
@@ -169,6 +172,7 @@ export async function lookupAttributes(input: {
         .from('records')
         .select(RECORD_SELECT)
         .ilike('known_phone', `%${last10}%`)
+        .is('deleted_at', null)
         .limit(20);
       if (error) throw new Error(error.message);
       const matched = (recs ?? []).filter((r) =>
@@ -185,6 +189,7 @@ export async function lookupAttributes(input: {
         .from('records')
         .select(RECORD_SELECT)
         .eq('zip', zip)
+        .is('deleted_at', null)
         .limit(20);
       if (error) throw new Error(error.message);
       const matched = (recs ?? []) as RecordRow[];

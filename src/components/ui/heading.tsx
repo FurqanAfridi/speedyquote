@@ -11,7 +11,7 @@ export function Heading({ title, description, infoContent }: HeadingProps) {
   return (
     <div className='min-w-0'>
       <div className='flex items-center gap-2'>
-        <h1 className='bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-2xl font-bold tracking-tight sm:text-3xl'>
+        <h1 className='bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight sm:text-4xl'>
           {title}
         </h1>
         {infoContent && (
@@ -21,7 +21,7 @@ export function Heading({ title, description, infoContent }: HeadingProps) {
         )}
       </div>
       {description ? (
-        <p className='text-muted-foreground mt-1 text-sm'>{description}</p>
+        <p className='text-muted-foreground mt-2 max-w-2xl text-base leading-relaxed'>{description}</p>
       ) : null}
     </div>
   );

@@ -34,19 +34,19 @@ export default function SignInViewPage() {
         />
         <div className='text-sidebar-foreground relative z-20 mt-auto'>
           <blockquote className='space-y-2'>
-            <p className='text-lg'>
-              Attribute every postcard call with a unique PIN — true age, homeowner status, and
-              creative performance for final expense mail.
+            <p className='text-xl leading-relaxed'>
+              Match every postcard call to a person with a unique PIN — age, homeowner status, and
+              how each mail piece performs.
             </p>
           </blockquote>
         </div>
       </div>
       <div className='flex h-full items-center justify-center p-4 lg:p-8'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]'>
-          <div className='flex flex-col space-y-2 text-center'>
-            <h1 className='text-2xl font-semibold tracking-tight'>Sign in</h1>
-            <p className='text-muted-foreground text-sm'>
-              Enter your email and password to access {siteConfig.shortName}
+        <div className='mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[380px]'>
+          <div className='flex flex-col space-y-3 text-center'>
+            <h1 className='text-3xl font-semibold tracking-tight'>Sign in</h1>
+            <p className='text-muted-foreground text-base'>
+              Enter your email and password to open {siteConfig.shortName}
             </p>
           </div>
           <UserAuthForm />

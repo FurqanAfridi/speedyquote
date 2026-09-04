@@ -55,12 +55,12 @@ export default function PageContainer({
   return (
     <div className='relative flex min-w-0 flex-1 flex-col overflow-x-hidden'>
       <div className='pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-teal-500/12 via-background to-transparent dark:from-teal-400/10' />
-      <div className='relative flex min-w-0 flex-1 flex-col p-4 md:px-6 md:pt-6'>
+      <div className='relative flex min-w-0 flex-1 flex-col p-5 md:px-8 md:pt-8'>
         {hasHeader && (
-          <div className='mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
             <div className='flex min-w-0 items-start gap-3'>
               <div className='mt-0.5 hidden sm:block'>
-                <BrandLogo className='size-10 shadow-md shadow-teal-900/15' />
+                <BrandLogo className='size-11 shadow-md shadow-teal-900/15' />
               </div>
               <Heading
                 title={pageTitle ?? ''}

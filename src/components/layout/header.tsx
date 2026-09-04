@@ -9,17 +9,17 @@ import { Link } from '@tanstack/react-router';
 
 export default function Header() {
   return (
-    <header className='bg-background/70 sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 rounded-t-xl border-b px-3 backdrop-blur-md sm:px-4'>
+    <header className='bg-background/70 sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-2 rounded-t-xl border-b px-3 backdrop-blur-md sm:px-4'>
       <div className='flex min-w-0 items-center gap-2'>
-        <SidebarTrigger className='-ml-1' />
-        <Separator orientation='vertical' className='hidden h-4 sm:block' />
+        <SidebarTrigger className='-ml-1 size-10' />
+        <Separator orientation='vertical' className='hidden h-5 sm:block' />
         <Link
           to='/dashboard/overview'
-          className='hidden min-w-0 items-center gap-2 sm:flex'
+          className='hidden min-w-0 items-center gap-2.5 sm:flex'
           aria-label={siteConfig.name}
         >
-          <BrandLogo className='size-7' />
-          <span className='truncate text-sm font-semibold tracking-tight'>{siteConfig.shortName}</span>
+          <BrandLogo className='size-8' />
+          <span className='truncate text-base font-semibold tracking-tight'>{siteConfig.shortName}</span>
         </Link>
         <Separator orientation='vertical' className='hidden h-4 md:block' />
         <div className='min-w-0 truncate'>

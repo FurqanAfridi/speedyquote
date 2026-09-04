@@ -52,7 +52,6 @@ export function RecordFormDialog({
   const [age, setAge] = React.useState('');
   const [homeowner, setHomeowner] = React.useState('');
   const [vertical, setVertical] = React.useState('');
-  const [listSource, setListSource] = React.useState('');
   const [attrs, setAttrs] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
@@ -68,7 +67,6 @@ export function RecordFormDialog({
     setAge(record?.age != null ? String(record.age) : '');
     setHomeowner(record?.homeowner_status ?? '');
     setVertical(record?.vertical ?? settings.verticals[0]?.name ?? '');
-    setListSource(record?.list_source ?? settings.default_list_source);
     const next: Record<string, string> = {};
     for (const key of extraKeys) next[key] = record?.attrs?.[key] ?? '';
     if (record?.attrs) {
@@ -77,7 +75,7 @@ export function RecordFormDialog({
       }
     }
     setAttrs(next);
-  }, [open, record, extraKeys, settings.default_list_source, settings.verticals]);
+  }, [open, record, extraKeys, settings.verticals]);
 
   function submit() {
     const parsedAge = age.trim() ? Number.parseInt(age, 10) : null;
@@ -99,7 +97,7 @@ export function RecordFormDialog({
       age: parsedAge != null && Number.isFinite(parsedAge) ? parsedAge : null,
       homeowner_status: homeowner.trim() || null,
       known_phone: phone.trim() || null,
-      list_source: listSource.trim() || null,
+      list_source: record?.list_source ?? settings.default_list_source ?? null,
       vertical: vertical.trim() || null,
       attrs: cleanAttrs
     });
@@ -173,10 +171,6 @@ export function RecordFormDialog({
             ) : (
               <Input id='rec-vertical' value={vertical} onChange={(e) => setVertical(e.target.value)} />
             )}
-          </div>
-          <div className='space-y-2'>
-            <Label htmlFor='rec-source'>List source</Label>
-            <Input id='rec-source' value={listSource} onChange={(e) => setListSource(e.target.value)} />
           </div>
           {Object.keys(attrs).map((key) => (
             <div key={key} className='space-y-2 sm:col-span-2'>

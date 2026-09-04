@@ -21,30 +21,45 @@ export function LookupTester({ initialPin = '' }: { initialPin?: string }) {
       testPinLookupFn({ data: input }),
     onSuccess: (body) => {
       setTestResult(JSON.stringify(body, null, 2));
-      toast.success(body.match_method === 'unmatched' ? 'No match' : `Hit (${body.match_method})`);
+      toast.success(body.match_method === 'unmatched' ? 'No match found' : `Found a match (${body.match_method})`);
     },
     onError: (err: Error) => toast.error(err.message)
   });
 
   return (
-    <div className='space-y-3'>
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+    <div className='space-y-4'>
+      <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
         <div className='space-y-2'>
-          <Label htmlFor='test-pin'>PIN</Label>
-          <Input id='test-pin' value={testPin} onChange={(e) => setTestPin(e.target.value)} />
+          <Label htmlFor='test-pin'>PIN code</Label>
+          <Input
+            id='test-pin'
+            value={testPin}
+            onChange={(e) => setTestPin(e.target.value)}
+            placeholder='e.g. from a postcard'
+          />
         </div>
         <div className='space-y-2'>
-          <Label htmlFor='test-zip'>ZIP</Label>
-          <Input id='test-zip' value={testZip} onChange={(e) => setTestZip(e.target.value)} />
+          <Label htmlFor='test-zip'>ZIP code</Label>
+          <Input
+            id='test-zip'
+            value={testZip}
+            onChange={(e) => setTestZip(e.target.value)}
+            placeholder='5-digit ZIP'
+          />
         </div>
         <div className='space-y-2'>
-          <Label htmlFor='test-ani'>Caller ID</Label>
-          <Input id='test-ani' value={testAni} onChange={(e) => setTestAni(e.target.value)} />
+          <Label htmlFor='test-ani'>Phone number</Label>
+          <Input
+            id='test-ani'
+            value={testAni}
+            onChange={(e) => setTestAni(e.target.value)}
+            placeholder='Caller phone'
+          />
         </div>
       </div>
       <Button
         type='button'
-        variant='secondary'
+        size='lg'
         disabled={testMutation.isPending || (!testPin && !testZip && !testAni)}
         onClick={() =>
           testMutation.mutate({
@@ -54,10 +69,10 @@ export function LookupTester({ initialPin = '' }: { initialPin?: string }) {
           })
         }
       >
-        {testMutation.isPending ? 'Looking up…' : 'Test lookup'}
+        {testMutation.isPending ? 'Looking up…' : 'Look up now'}
       </Button>
       {testResult && (
-        <pre className='bg-muted max-h-72 overflow-auto rounded-md p-3 text-xs'>{testResult}</pre>
+        <pre className='bg-muted max-h-72 overflow-auto rounded-md p-4 text-sm'>{testResult}</pre>
       )}
     </div>
   );

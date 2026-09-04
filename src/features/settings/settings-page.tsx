@@ -22,7 +22,7 @@ export function SettingsPage() {
   return (
     <PageContainer
       pageTitle='Settings'
-      pageDescription='Account, list fields, verticals, and API keys for lookup integrations.'
+      pageDescription='Change your name and password, list options, product names, and keys used for call lookups.'
     >
       <div className='space-y-6'>
         <AccountCard />
@@ -104,7 +104,7 @@ function AccountCard() {
     <Card>
       <CardHeader>
         <CardTitle>Account</CardTitle>
-        <CardDescription>Display name and password for this login.</CardDescription>
+        <CardDescription className='text-base'>Your display name and password for this login.</CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
@@ -199,8 +199,8 @@ function PortalCard() {
     <Card>
       <CardHeader>
         <CardTitle>List & data</CardTitle>
-        <CardDescription>
-          Portal name, default list source, verticals for uploads, and extra columns.
+        <CardDescription className='text-base'>
+          Portal name, default upload source, product names for uploads, and extra columns.
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
@@ -229,7 +229,7 @@ function PortalCard() {
 
         <div className='grid gap-6 lg:grid-cols-2'>
           <div className='space-y-3'>
-            <p className='text-sm font-medium'>Verticals</p>
+            <p className='text-base font-medium'>Products / verticals</p>
             <div className='flex flex-col gap-2 sm:flex-row'>
               <Input
                 placeholder='e.g. medicare'
@@ -252,13 +252,13 @@ function PortalCard() {
               </Button>
             </div>
             {saved.verticals.length === 0 ? (
-              <p className='text-muted-foreground text-sm'>None yet — add one before uploading.</p>
+              <p className='text-muted-foreground text-base'>None yet — add one before uploading.</p>
             ) : (
               <ul className='space-y-2'>
                 {saved.verticals.map((v) => (
                   <li
                     key={v.name}
-                    className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
+                    className='flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-base'
                   >
                     <span className='truncate'>{v.name}</span>
                     <Button
@@ -278,9 +278,9 @@ function PortalCard() {
           </div>
 
           <div className='space-y-3'>
-            <p className='text-sm font-medium'>Database columns (custom)</p>
+            <p className='text-sm font-medium'>Extra data columns</p>
             <p className='text-muted-foreground text-xs'>
-              Creates a column in the database for list uploads and record editing.
+              Fields kept from uploads that are not core database columns.
             </p>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]'>
               <Input
@@ -307,7 +307,7 @@ function PortalCard() {
                     .then(() => {
                       setColKey('');
                       setColDefault('');
-                      toast.success(`Created database column “${key}”`);
+                      toast.success(`Created extra data column “${key}”`);
                       void query.refetch();
                     })
                     .catch((err: Error) => toast.error(err.message));
@@ -317,7 +317,7 @@ function PortalCard() {
               </Button>
             </div>
             {saved.extra_columns.length === 0 ? (
-              <p className='text-muted-foreground text-sm'>No custom database columns yet.</p>
+              <p className='text-muted-foreground text-sm'>No extra data columns yet.</p>
             ) : (
               <ul className='space-y-2'>
                 {saved.extra_columns.map((c) => (
@@ -326,7 +326,7 @@ function PortalCard() {
                     className='flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm'
                   >
                     <span className='truncate'>
-                      Database · {c.key}
+                      Extra data · {c.key}
                       {c.default_value ? (
                         <span className='text-muted-foreground'> · {c.default_value}</span>
                       ) : null}
@@ -390,11 +390,11 @@ function ApiKeysCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>APIs</CardTitle>
-        <CardDescription>
-          Create a Bearer token per integration (Ringba, test, another buyer). Use it as{' '}
-          <code className='text-xs'>Authorization: Bearer …</code> on{' '}
-          <code className='text-xs'>POST /api/pin-lookup</code>.
+        <CardTitle>Lookup keys</CardTitle>
+        <CardDescription className='text-base'>
+          Create a named key for each phone system (for example Ringba). Your tech person pastes it as{' '}
+          <code className='text-sm'>Authorization: Bearer …</code> when calling{' '}
+          <code className='text-sm'>POST /api/pin-lookup</code>.
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>

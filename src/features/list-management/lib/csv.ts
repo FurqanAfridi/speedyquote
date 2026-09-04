@@ -15,31 +15,38 @@ export const DATABASE_FIELDS: { value: Exclude<MappedField, 'attrs' | 'ignore'>;
   { value: 'age', label: 'Age', hint: 'records.age' },
   { value: 'homeowner_status', label: 'Homeowner', hint: 'records.homeowner_status' },
   { value: 'known_phone', label: 'Phone / ANI', hint: 'records.known_phone · lookup' },
-  { value: 'list_source', label: 'List source', hint: 'records.list_source' },
   { value: 'vertical', label: 'Vertical', hint: 'records.vertical' }
 ];
 
 /** @deprecated use getMappingOptions — kept for any old imports */
 export const FIELD_LABELS = [
   ...DATABASE_FIELDS.map((f) => ({ value: f.value as MappedField, label: `${f.label} (${f.hint.split(' · ')[0]})` })),
-  { value: 'attrs' as MappedField, label: 'New extra column (use file header name)' },
+  { value: 'attrs' as MappedField, label: 'Extra data (keep from upload)' },
   { value: 'ignore' as MappedField, label: 'Skip' }
 ];
 
-export function getMappingOptions(extraColumns: PortalExtraColumn[]): { value: string; label: string }[] {
-  const core = DATABASE_FIELDS.map((f) => ({
+export type MappingOption = { value: string; label: string; group: 'database' | 'extra' | 'skip' };
+
+export function getMappingOptions(extraColumns: PortalExtraColumn[]): MappingOption[] {
+  const core: MappingOption[] = DATABASE_FIELDS.map((f) => ({
     value: f.value,
-    label: `Database · ${f.label}`
+    label: f.label,
+    group: 'database'
   }));
-  const extras = extraColumns.map((c) => ({
+  const extras: MappingOption[] = extraColumns.map((c) => ({
     value: attrColumnId(c.key),
-    label: `Database · ${c.key}`
+    label: c.key,
+    group: 'extra'
   }));
   return [
     ...core,
     ...extras,
-    { value: 'attrs', label: 'Database · create new column from upload header' },
-    { value: 'ignore', label: 'Skip — do not import' }
+    {
+      value: 'attrs',
+      label: 'Keep as extra data (use uploaded column name)',
+      group: 'extra'
+    },
+    { value: 'ignore', label: 'Do not import', group: 'skip' }
   ];
 }
 
@@ -83,9 +90,6 @@ const HEADER_TO_FIELD: Record<string, MappedField> = {
   phone_number: 'known_phone',
   caller_id: 'known_phone',
   ani: 'known_phone',
-  list_source: 'list_source',
-  listsource: 'list_source',
-  source: 'list_source',
   vertical: 'vertical'
 };
 

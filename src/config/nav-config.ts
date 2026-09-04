@@ -21,7 +21,7 @@ export const navGroups: NavGroup[] = [
         items: []
       },
       {
-        title: 'API',
+        title: 'Lookups',
         url: '/dashboard/pin-diagnostics',
         icon: 'code',
         isActive: false,

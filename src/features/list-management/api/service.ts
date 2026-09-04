@@ -1,10 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ageBandFromAge } from '../lib/csv';
-import { attrColumnId, DEFAULT_VISIBLE_COLUMNS, slugifyColumnKey } from '../lib/columns';
+import { attrColumnId, defaultBatchTimestamp, slugifyColumnKey } from '../lib/columns';
 import type {
   ListRecordInput,
   PortalSettings,
   RecordMutationInput,
+  UploadBatch,
   UploadListInput,
   UploadListResult,
   UploadedPiece
@@ -58,6 +59,7 @@ function asAttrs(raw: unknown): Record<string, string> {
 
 function toStored(row: {
   record_id: number;
+  batch_id?: number | null;
   first_name: string | null;
   last_name: string | null;
   address1: string | null;
@@ -72,17 +74,20 @@ function toStored(row: {
   list_source: string | null;
   created_at?: string | null;
   attrs: unknown;
-  mail_pieces?: Array<{ piece_id: number; pin_code: string }> | { piece_id: number; pin_code: string } | null;
+  mail_pieces?: Array<{
+    piece_id: number;
+    pin_code: string;
+    deleted_at?: string | null;
+  }> | { piece_id: number; pin_code: string; deleted_at?: string | null } | null;
 }): UploadedPiece {
-  const pieces = Array.isArray(row.mail_pieces)
-    ? row.mail_pieces
-    : row.mail_pieces
-      ? [row.mail_pieces]
-      : [];
+  const pieces = (
+    Array.isArray(row.mail_pieces) ? row.mail_pieces : row.mail_pieces ? [row.mail_pieces] : []
+  ).filter((p) => !p.deleted_at);
   const piece = pieces[0];
   return {
     piece_id: piece?.piece_id ?? null,
     record_id: row.record_id,
+    batch_id: row.batch_id ?? null,
     pin_code: piece?.pin_code ?? null,
     first_name: row.first_name,
     last_name: row.last_name,
@@ -98,6 +103,36 @@ function toStored(row: {
     list_source: row.list_source,
     created_at: row.created_at ?? null,
     attrs: asAttrs(row.attrs)
+  };
+}
+
+function batchError(message: string) {
+  if (message.includes('upload_batches') || message.includes('batch_id')) {
+    return new Error('Run supabase/migrations/20260904020000_upload_batches.sql in Supabase first');
+  }
+  return new Error(message);
+}
+
+function softDeleteError(message: string) {
+  if (message.includes('deleted_at')) {
+    return new Error('Run supabase/migrations/20260904040000_soft_delete.sql in Supabase first');
+  }
+  return new Error(message);
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function toBatch(row: Record<string, unknown>): UploadBatch {
+  return {
+    batch_id: Number(row.batch_id),
+    label: String(row.label ?? 'Upload'),
+    file_name: (row.file_name as string | null) ?? null,
+    list_source: (row.list_source as string | null) ?? null,
+    vertical: (row.vertical as string | null) ?? null,
+    record_count: Number(row.record_count ?? 0),
+    created_at: String(row.created_at ?? new Date().toISOString())
   };
 }
 
@@ -219,20 +254,17 @@ export async function createExtraColumn(input: {
     throw new Error(`Column “${key}” already exists`);
   }
 
-  const nextVisible = settings.visible_columns.length
-    ? [...new Set([...settings.visible_columns, attrColumnId(key)])]
-    : [...DEFAULT_VISIBLE_COLUMNS, attrColumnId(key)];
-
+  // Do not auto-add to visible_columns — extras stay hidden until the user enables them.
   const saved = await savePortalSettings({
     ...settings,
-    extra_columns: [...settings.extra_columns, { key, default_value }],
-    visible_columns: nextVisible
+    extra_columns: [...settings.extra_columns, { key, default_value }]
   });
 
   // Seed attrs on existing rows so the column is present in the database.
   const { data: rows, error: listError } = await admin
     .from('records')
     .select('record_id, attrs')
+    .is('deleted_at', null)
     .limit(10000);
   if (listError) throw new Error(listError.message);
 
@@ -318,6 +350,28 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
     extraColumns = settings.extra_columns;
   }
 
+  const listSource = input.listSource?.trim() || 'Upload';
+  const vertical = input.vertical?.trim() || null;
+  const fileName = input.fileName?.trim() || null;
+  const batchLabel = input.batchLabel?.trim() || defaultBatchTimestamp();
+
+  const { data: batchRow, error: batchErrorInsert } = await admin
+    .from('upload_batches')
+    .insert({
+      label: batchLabel,
+      file_name: fileName,
+      list_source: listSource,
+      vertical,
+      record_count: 0
+    })
+    .select('*')
+    .single();
+
+  if (batchErrorInsert || !batchRow) {
+    throw batchError(batchErrorInsert?.message ?? 'Failed to create upload batch');
+  }
+  const batchId = batchRow.batch_id as number;
+
   const prepared = input.records.map((row: ListRecordInput) => {
     if (!row.pin) skippedNoPin += 1;
     const attrs = { ...(row.attrs ?? {}) };
@@ -339,9 +393,10 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
       age_band: ageBandFromAge(row.age),
       homeowner_status: row.homeowner_status ?? null,
       known_phone: row.known_phone ?? null,
-      list_source: row.list_source ?? input.listSource ?? 'Upload',
+      list_source: row.list_source ?? listSource,
       list_purchase_date: new Date().toISOString().slice(0, 10),
-      vertical: row.vertical ?? input.vertical ?? null,
+      vertical: row.vertical ?? vertical,
+      batch_id: batchId,
       attrs
     };
   });
@@ -350,16 +405,24 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
     .from('records')
     .insert(prepared)
     .select(
-      'record_id, first_name, last_name, address1, city, state, zip, zip4, age, homeowner_status, known_phone, vertical, list_source, created_at, attrs'
+      'record_id, batch_id, first_name, last_name, address1, city, state, zip, zip4, age, homeowner_status, known_phone, vertical, list_source, created_at, attrs'
     );
 
   if (insertError || !inserted) {
+    await admin.from('upload_batches').delete().eq('batch_id', batchId);
     throw new Error(
-      insertError?.message?.includes('attrs') || insertError?.message?.includes('vertical')
-        ? 'Run supabase/migrations/20260903230000_any_vertical.sql in Supabase first'
-        : (insertError?.message ?? 'Failed to insert records')
+      insertError?.message?.includes('batch_id')
+        ? 'Run supabase/migrations/20260904020000_upload_batches.sql in Supabase first'
+        : insertError?.message?.includes('attrs') || insertError?.message?.includes('vertical')
+          ? 'Run supabase/migrations/20260903230000_any_vertical.sql in Supabase first'
+          : (insertError?.message ?? 'Failed to insert records')
     );
   }
+
+  await admin
+    .from('upload_batches')
+    .update({ record_count: inserted.length })
+    .eq('batch_id', batchId);
 
   const pieces = inserted
     .map((rec, i) => ({
@@ -397,23 +460,86 @@ export async function uploadList(input: UploadListInput): Promise<UploadListResu
     recordsInserted: inserted.length,
     piecesCreated: pieceRows.length,
     skippedNoPin,
-    samplePieces
+    samplePieces,
+    batch: toBatch({ ...batchRow, record_count: inserted.length })
   };
 }
 
-export async function listRecords(limit = 10000): Promise<UploadedPiece[]> {
+export async function listUploadBatches(limit = 100): Promise<UploadBatch[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('upload_batches')
+    .select('*')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw batchError(error.message);
+  return (data ?? []).map((row) => toBatch(row as Record<string, unknown>));
+}
+
+export async function deleteUploadBatch(batchId: number): Promise<{ deleted: number }> {
+  if (!Number.isFinite(batchId)) throw new Error('Invalid batch');
+  const admin = createAdminClient();
+  const deletedAt = nowIso();
+
+  const recordIds: number[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  for (;;) {
+    const { data, error } = await admin
+      .from('records')
+      .select('record_id')
+      .eq('batch_id', batchId)
+      .is('deleted_at', null)
+      .range(from, from + pageSize - 1);
+    if (error) throw softDeleteError(error.message);
+    const rows = data ?? [];
+    for (const row of rows) recordIds.push(row.record_id as number);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  for (let i = 0; i < recordIds.length; i += 500) {
+    const chunk = recordIds.slice(i, i + 500);
+    const { error: pieceError } = await admin
+      .from('mail_pieces')
+      .update({ deleted_at: deletedAt })
+      .in('record_id', chunk)
+      .is('deleted_at', null);
+    if (pieceError) throw softDeleteError(pieceError.message);
+    const { error: recError } = await admin
+      .from('records')
+      .update({ deleted_at: deletedAt, updated_at: deletedAt })
+      .in('record_id', chunk)
+      .is('deleted_at', null);
+    if (recError) throw softDeleteError(recError.message);
+  }
+
+  const { error: batchDelError } = await admin
+    .from('upload_batches')
+    .update({ deleted_at: deletedAt })
+    .eq('batch_id', batchId)
+    .is('deleted_at', null);
+  if (batchDelError) throw softDeleteError(batchDelError.message);
+
+  return { deleted: recordIds.length };
+}
+
+export async function listRecords(limit = Number.POSITIVE_INFINITY): Promise<UploadedPiece[]> {
   const admin = createAdminClient();
   const pageSize = 1000;
   const out: UploadedPiece[] = [];
   let from = 0;
 
   while (out.length < limit) {
-    const to = Math.min(from + pageSize - 1, limit - 1);
+    const take = Math.min(pageSize, Number.isFinite(limit) ? limit - out.length : pageSize);
+    const to = from + take - 1;
     const { data, error } = await admin
       .from('records')
       .select(
         `
       record_id,
+      batch_id,
       first_name,
       last_name,
       address1,
@@ -428,17 +554,26 @@ export async function listRecords(limit = 10000): Promise<UploadedPiece[]> {
       list_source,
       created_at,
       attrs,
-      mail_pieces ( piece_id, pin_code )
+      mail_pieces ( piece_id, pin_code, deleted_at )
     `
       )
+      .is('deleted_at', null)
       .order('record_id', { ascending: false })
       .range(from, to);
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes('batch_id')) {
+        throw batchError(error.message);
+      }
+      if (error.message.includes('deleted_at')) {
+        throw softDeleteError(error.message);
+      }
+      throw new Error(error.message);
+    }
     const batch = (data ?? []).map((row) => toStored(row as Parameters<typeof toStored>[0]));
     out.push(...batch);
-    if (batch.length < pageSize) break;
-    from += pageSize;
+    if (batch.length < take) break;
+    from += take;
   }
 
   return out;
@@ -483,14 +618,19 @@ export async function updateRecord(input: RecordMutationInput): Promise<void> {
     .from('mail_pieces')
     .select('piece_id, pin_code')
     .eq('record_id', input.record_id)
+    .is('deleted_at', null)
     .order('piece_id', { ascending: false });
 
   if (pieceReadError) throw new Error(pieceReadError.message);
   const current = pieces?.[0];
 
   if (!pin) {
-    const { error: delError } = await admin.from('mail_pieces').delete().eq('record_id', input.record_id);
-    if (delError) throw new Error(delError.message);
+    const { error: delError } = await admin
+      .from('mail_pieces')
+      .update({ deleted_at: nowIso() })
+      .eq('record_id', input.record_id)
+      .is('deleted_at', null);
+    if (delError) throw softDeleteError(delError.message);
     return;
   }
 
@@ -518,20 +658,23 @@ export async function deleteRecords(recordIds: number[]): Promise<number> {
   if (ids.length > 500) throw new Error('Delete at most 500 records at a time');
 
   const admin = createAdminClient();
-  const { error: pieceError } = await admin.from('mail_pieces').delete().in('record_id', ids);
-  if (pieceError) throw new Error(pieceError.message);
+  const deletedAt = nowIso();
 
-  const { error, count } = await admin
+  const { error: pieceError } = await admin
+    .from('mail_pieces')
+    .update({ deleted_at: deletedAt })
+    .in('record_id', ids)
+    .is('deleted_at', null);
+  if (pieceError) throw softDeleteError(pieceError.message);
+
+  const { data, error } = await admin
     .from('records')
-    .delete({ count: 'exact' })
-    .in('record_id', ids);
-  if (error) {
-    if (error.message.includes('foreign key') || error.message.includes('restrict')) {
-      throw new Error('Could not delete because related rows still exist.');
-    }
-    throw new Error(error.message);
-  }
-  return count ?? ids.length;
+    .update({ deleted_at: deletedAt, updated_at: deletedAt })
+    .in('record_id', ids)
+    .is('deleted_at', null)
+    .select('record_id');
+  if (error) throw softDeleteError(error.message);
+  return data?.length ?? ids.length;
 }
 
 export type LookupLogRow = {
@@ -558,12 +701,20 @@ export async function listLookupLogs(limit = 50): Promise<LookupLogRow[]> {
 export async function getOverviewStats() {
   const admin = createAdminClient();
   const [records, pieces, lookups, hits, recent, recRows, logRows] = await Promise.all([
-    admin.from('records').select('*', { count: 'exact', head: true }),
-    admin.from('mail_pieces').select('*', { count: 'exact', head: true }),
+    admin.from('records').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    admin
+      .from('mail_pieces')
+      .select('*', { count: 'exact', head: true })
+      .is('deleted_at', null),
     admin.from('lookup_logs').select('*', { count: 'exact', head: true }),
     admin.from('lookup_logs').select('*', { count: 'exact', head: true }).eq('hit', true),
     listLookupLogs(12),
-    admin.from('records').select('vertical, state, list_source, created_at, homeowner_status, known_phone').order('record_id', { ascending: false }).limit(8000),
+    admin
+      .from('records')
+      .select('vertical, state, list_source, created_at, homeowner_status, known_phone')
+      .is('deleted_at', null)
+      .order('record_id', { ascending: false })
+      .limit(8000),
     admin.from('lookup_logs').select('hit, call_id, timestamp, latency_ms').order('timestamp', { ascending: false }).limit(500)
   ]);
 

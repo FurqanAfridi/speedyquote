@@ -43,11 +43,14 @@ export type UploadListInput = {
   vertical?: string | null;
   /** Extra column keys to register in portal_settings when missing. */
   registerExtraKeys?: string[];
+  fileName?: string | null;
+  batchLabel?: string | null;
 };
 
 export type UploadedPiece = {
   piece_id: number | null;
   record_id: number;
+  batch_id: number | null;
   pin_code: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -63,6 +66,16 @@ export type UploadedPiece = {
   list_source: string | null;
   created_at: string | null;
   attrs: Record<string, string>;
+};
+
+export type UploadBatch = {
+  batch_id: number;
+  label: string;
+  file_name: string | null;
+  list_source: string | null;
+  vertical: string | null;
+  record_count: number;
+  created_at: string;
 };
 
 export type PortalVertical = {
@@ -113,4 +126,5 @@ export type UploadListResult = {
   piecesCreated: number;
   skippedNoPin: number;
   samplePieces: UploadedPiece[];
+  batch: UploadBatch | null;
 };

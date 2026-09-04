@@ -10,10 +10,12 @@ import {
   createExtraColumn,
   deleteExtraColumn,
   deleteRecords,
+  deleteUploadBatch,
   getOverviewStats,
   getPortalSettings,
   listLookupLogs,
   listRecords,
+  listUploadBatches,
   savePortalSettings,
   updateRecord,
   uploadList
@@ -30,12 +32,13 @@ async function gate() {
 
 export const getListUploadOptions = createServerFn({ method: 'GET' }).handler(async () => {
   await gate();
-  const [recentPins, logs, settings] = await Promise.all([
-    listRecords(10000),
+  const [recentPins, logs, settings, batches] = await Promise.all([
+    listRecords(),
     listLookupLogs(80),
-    getPortalSettings().catch(() => null)
+    getPortalSettings().catch(() => null),
+    listUploadBatches(100).catch(() => [] as Awaited<ReturnType<typeof listUploadBatches>>)
   ]);
-  return { recentPins, logs, settings };
+  return { recentPins, logs, settings, batches };
 });
 
 export const fetchPortalSettings = createServerFn({ method: 'GET' }).handler(async () => {
@@ -90,6 +93,13 @@ export const deleteRecordsFn = createServerFn({ method: 'POST' })
     await gate();
     const deleted = await deleteRecords(data.recordIds);
     return { deleted };
+  });
+
+export const deleteUploadBatchFn = createServerFn({ method: 'POST' })
+  .validator((data: { batchId: number }) => data)
+  .handler(async ({ data }) => {
+    await gate();
+    return deleteUploadBatch(data.batchId);
   });
 
 export const testPinLookupFn = createServerFn({ method: 'POST' })
